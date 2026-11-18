@@ -204,7 +204,7 @@ export function UserProfileMenu({
               className="w-full px-2.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>Importar / restaurar JSON</span>
+              <span>Subir copia JSON (Netlify / Local)</span>
             </button>
 
             <button

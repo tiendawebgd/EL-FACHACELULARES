@@ -13,6 +13,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import { BackupImportModal } from './components/BackupImportModal';
 import { BalanceView } from './components/BalanceView';
 import { BrandLogo } from './components/BrandLogo';
 import { ConflictModal } from './components/ConflictModal';
@@ -58,6 +59,11 @@ import type {
   ScannerMode,
   ToastMessage,
 } from './types';
+import {
+  mergeBackupState,
+  parseAndNormalizeBackupJson,
+  type ParsedBackupResult,
+} from './utils/backupImport';
 import { getNowTimestampStr, toSafeFirestoreId } from './utils/format';
 
 interface PendingConflict {
@@ -65,6 +71,11 @@ interface PendingConflict {
   localState: AppStateData;
   cloudState: AppStateData;
   cloudCache: CloudSnapshotCache;
+}
+
+interface PendingBackupImport {
+  fileName: string;
+  parsed: ParsedBackupResult;
 }
 
 const NAV_ITEMS: { id: AppSection; label: string; icon: typeof LayoutGrid }[] = [
@@ -109,6 +120,8 @@ export default function App() {
   const [syncingCloud, setSyncingCloud] = useState(false);
   const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
   const [resolvingConflict, setResolvingConflict] = useState(false);
+  const [pendingBackup, setPendingBackup] = useState<PendingBackupImport | null>(null);
+  const [importingBackup, setImportingBackup] = useState(false);
 
   const [receipt, setReceipt] = useState<ReceiptPayload | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -294,10 +307,19 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
       const code = (err as { code?: string })?.code || '';
-      if (code === 'auth/popup-closed-by-user') {
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
         setAuthError('Inicio de sesión cancelado.');
       } else if (code === 'auth/popup-blocked') {
         setAuthError('El navegador bloqueó la ventana de Google. Permití popups e intentá de nuevo.');
+      } else if (code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'este dominio';
+        setAuthError(
+          `El dominio "${host}" aún no está autorizado en Firebase Authentication. Agregalo en Firebase Console > Authentication > Settings > Authorized domains.`
+        );
+      } else if (code === 'auth/operation-not-allowed') {
+        setAuthError('El inicio de sesión con Google no está habilitado en Firebase Console.');
+      } else if (code === 'auth/network-request-failed') {
+        setAuthError('Error de red al conectar con Google. Verificá tu conexión.');
       } else {
         setAuthError('No se pudo iniciar sesión con Google.');
       }
@@ -409,19 +431,63 @@ export default function App() {
   const handleRestoreJson = async (file: File) => {
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text) as Partial<AppStateData>;
-      if (!parsed || typeof parsed !== 'object') {
-        throw new Error('Formato inválido');
+      const parsed = parseAndNormalizeBackupJson(text);
+      setPendingBackup({
+        fileName: file.name,
+        parsed,
+      });
+    } catch (err) {
+      notify(
+        'error',
+        'Archivo inválido',
+        err instanceof Error ? err.message : 'No se pudo leer el archivo JSON de respaldo.'
+      );
+    }
+  };
+
+  const applyRestoredBackup = async (mode: 'replace' | 'merge') => {
+    if (!pendingBackup) return;
+    setImportingBackup(true);
+    try {
+      const incoming = pendingBackup.parsed.state;
+      const nextState =
+        mode === 'merge' ? mergeBackupState(stateRef.current, incoming) : incoming;
+
+      setProductos(nextState.productos);
+      setReparaciones(nextState.reparaciones);
+      setHistorial(nextState.historial);
+      writeLocalMirror(nextState);
+
+      if (authModeRef.current === 'google' && auth.currentUser) {
+        setSyncingCloud(true);
+        try {
+          await syncStateToFirestore(auth.currentUser, nextState, cloudCacheRef.current, true);
+          notify(
+            'success',
+            'Copia restaurada y sincronizada',
+            `${nextState.productos.length} productos, ${nextState.reparaciones.length} reparaciones y ${nextState.historial.length} ventas.`
+          );
+        } finally {
+          setSyncingCloud(false);
+        }
+      } else {
+        await saveGuestStateToServer(nextState);
+        notify(
+          'success',
+          'Copia de seguridad restaurada',
+          `${nextState.productos.length} productos, ${nextState.reparaciones.length} reparaciones y ${nextState.historial.length} ventas.`
+        );
       }
-      const nextState: AppStateData = {
-        productos: Array.isArray(parsed.productos) ? parsed.productos : [],
-        reparaciones: Array.isArray(parsed.reparaciones) ? parsed.reparaciones : [],
-        historial: Array.isArray(parsed.historial) ? parsed.historial : [],
-      };
-      commitState(nextState);
-      notify('success', 'Respaldo restaurado', 'Los datos del archivo JSON fueron cargados.');
-    } catch {
-      notify('error', 'Archivo inválido', 'No se pudo leer el archivo JSON de respaldo.');
+
+      setPendingBackup(null);
+    } catch (err) {
+      notify(
+        'error',
+        'Error al restaurar copia',
+        err instanceof Error ? err.message : 'Revisá el archivo o tu conexión.'
+      );
+    } finally {
+      setImportingBackup(false);
     }
   };
 
@@ -1004,6 +1070,20 @@ export default function App() {
         userEmail={pendingConflict?.user.email || ''}
         onUseCloud={() => void handleConflictUseCloud()}
         onUploadLocal={() => void handleConflictUploadLocal()}
+      />
+
+      <BackupImportModal
+        open={Boolean(pendingBackup)}
+        fileName={pendingBackup?.fileName || ''}
+        parsed={pendingBackup?.parsed || null}
+        hasExistingData={hasAnyData(stateRef.current)}
+        isCloudConnected={authMode === 'google' && Boolean(firebaseUser)}
+        importing={importingBackup}
+        onReplace={() => void applyRestoredBackup('replace')}
+        onMerge={() => void applyRestoredBackup('merge')}
+        onClose={() => {
+          if (!importingBackup) setPendingBackup(null);
+        }}
       />
 
       <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />

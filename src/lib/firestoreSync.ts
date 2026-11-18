@@ -23,8 +23,10 @@ const VALID_REPAIR_STATUSES: RepairStatus[] = [
 ];
 
 function clampString(val: unknown, maxLen: number, fallback = ''): string {
-  const str = typeof val === 'string' ? val : val == null ? fallback : String(val);
-  return str.slice(0, maxLen);
+  const raw = typeof val === 'string' ? val : val == null ? '' : String(val);
+  const trimmed = raw.trim();
+  const resolved = trimmed || fallback;
+  return resolved.slice(0, maxLen);
 }
 
 function clampNonNegNumber(val: unknown, fallback = 0): number {
@@ -34,9 +36,9 @@ function clampNonNegNumber(val: unknown, fallback = 0): number {
 }
 
 export function sanitizeProduct(p: Product, uid: string) {
-  const codigo = clampString(p.codigo.trim() || 'SIN-COD', 64);
-  const nombre = clampString(p.nombre.trim() || 'Producto', 200);
-  const categoria = clampString(p.categoria.trim() || 'Accesorios', 80);
+  const codigo = clampString(p.codigo, 64, 'SIN-COD');
+  const nombre = clampString(p.nombre, 200, 'Producto');
+  const categoria = clampString(p.categoria, 80, 'Accesorios');
   return {
     uid,
     codigo,
@@ -55,25 +57,25 @@ export function sanitizeRepairOrder(r: RepairOrder, uid: string) {
   return {
     uid,
     id: Math.max(1, Math.floor(clampNonNegNumber(r.id, Date.now()))),
-    n_orden: clampString(r.n_orden.trim() || `ORD-${Date.now()}`, 40),
-    cliente: clampString(r.cliente.trim() || 'Cliente', 120),
-    telefono: clampString(r.telefono ?? '', 50),
-    equipo: clampString(r.equipo.trim() || 'Equipo', 120),
-    falla: clampString(r.falla ?? '', 1000),
+    n_orden: clampString(r.n_orden, 40, `ORD-${Date.now()}`),
+    cliente: clampString(r.cliente, 120, 'Cliente'),
+    telefono: clampString(r.telefono, 50, ''),
+    equipo: clampString(r.equipo, 120, 'Equipo'),
+    falla: clampString(r.falla, 1000, ''),
     estado,
     presupuesto: clampNonNegNumber(r.presupuesto, 0),
     senia: clampNonNegNumber(r.senia, 0),
     costo_repuesto: clampNonNegNumber(r.costo_repuesto, 0),
-    fecha: clampString(r.fecha || new Date().toISOString().split('T')[0], 30),
+    fecha: clampString(r.fecha, 30, new Date().toISOString().split('T')[0]),
   };
 }
 
 function sanitizeLineItem(item: SaleLineItem): Record<string, unknown> {
   return {
-    codigo: clampString(item.codigo ?? '', 64),
+    codigo: clampString(item.codigo, 64, ''),
     id: typeof item.id === 'number' ? item.id : 0,
-    n_orden: clampString(item.n_orden ?? '', 40),
-    nombre: clampString(item.nombre || 'Ítem', 200),
+    n_orden: clampString(item.n_orden, 40, ''),
+    nombre: clampString(item.nombre, 200, 'Ítem'),
     precio: clampNonNegNumber(item.precio, 0),
     costo: clampNonNegNumber(item.costo, 0),
     cantidad: Math.max(1, Math.floor(clampNonNegNumber(item.cantidad, 1))),
@@ -87,10 +89,14 @@ export function sanitizeSaleRecord(s: SaleRecord, uid: string) {
     : [];
   return {
     uid,
-    n_recibo: clampString(s.n_recibo.trim() || `REC-${Date.now()}`, 40),
-    fecha: clampString(s.fecha || new Date().toISOString().replace('T', ' ').slice(0, 19), 40),
-    detalle: clampString(s.detalle.trim() || 'Venta', 2000),
-    metodo_pago: clampString(s.metodo_pago.trim() || 'Efectivo', 50),
+    n_recibo: clampString(s.n_recibo, 40, `REC-${Date.now()}`),
+    fecha: clampString(
+      s.fecha,
+      40,
+      new Date().toISOString().replace('T', ' ').slice(0, 19)
+    ),
+    detalle: clampString(s.detalle, 2000, 'Venta'),
+    metodo_pago: clampString(s.metodo_pago, 50, 'Efectivo'),
     total: clampNonNegNumber(s.total, 0),
     descuento: clampNonNegNumber(s.descuento, 0),
     paga_con: clampNonNegNumber(s.paga_con, 0),

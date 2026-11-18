@@ -35,7 +35,8 @@ export async function loadGuestStateFromServer(): Promise<AppStateData> {
   const local = readLocalMirror();
   try {
     const res = await fetch('/api/state', { credentials: 'same-origin' });
-    if (!res.ok) return local;
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok || !contentType.includes('application/json')) return local;
     const remote = (await res.json()) as Partial<AppStateData>;
     const serverState: AppStateData = {
       productos: Array.isArray(remote.productos) ? remote.productos : [],

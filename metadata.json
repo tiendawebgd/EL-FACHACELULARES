@@ -1,0 +1,6 @@
+{
+  "name": "EL FACHA CELULARES - Sistema de Gestión",
+  "description": "Sistema de gestión comercial y técnica para El Facha Celulares: inventario, punto de venta, escáner, servicio técnico, balance y exportación Excel.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

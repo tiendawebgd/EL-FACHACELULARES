@@ -1,0 +1,2444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EL FACHA CELULARES - Sistema de Gestión</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
+    <!-- Inicio de sesión real con Google mediante Netlify Identity -->
+    <script type="module">
+        import { oauthLogin, handleAuthCallback, getUser, logout } from 'https://esm.sh/@netlify/identity@2.0.0';
+        window.fachaAuth = { oauthLogin, handleAuthCallback, getUser, logout };
+    </script>
+    <style>
+        body { background-color: #f8f9fa; overflow-x: hidden; position: relative; font-family: system-ui, -apple-system, sans-serif; }
+        
+        /* MARCA DE AGUA EN 3D PARA EL PANEL PRINCIPAL (logo_facha.png) */
+        .section-view { display: none; position: relative; }
+        .section-view.active { display: block; }
+        .section-view::before {
+            content: "";
+            position: fixed;
+            top: 55%;
+            left: 58%;
+            transform: translate(-50%, -23%) perspective(600px) rotateY(15deg) rotateX(-10deg) scale(0.9);
+            width: 520px;
+            height: 300px;
+            background-image: url('static/logo_facha.png');
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            opacity: 0.20;
+            pointer-events: none;
+            z-index: 0;
+            filter: drop-shadow(10px 15px 20px rgba(0, 0, 0, 0.2));
+        }
+
+        .card, .card-stat, .scanner-card-dark { position: relative; z-index: 1; }
+
+        #sidebar {
+            position: fixed; top: 0; left: 0; height: 100vh; width: 260px;
+            background-color: #0f172a; color: #fff; transition: all 0.3s ease; z-index: 1050;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.1); overflow-x: hidden;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+        #sidebar.collapsed { width: 70px; }
+        #sidebar .sidebar-header {
+            padding: 12px; display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.1); height: 75px;
+        }
+        #sidebar.collapsed .sidebar-header { padding: 15px 10px; justify-content: center; gap: 0; }
+        #sidebar.collapsed .hide-collapsed { display: none !important; }
+        #sidebar .nav-link {
+            color: #94a3b8; padding: 12px 20px; margin: 4px 10px; border-radius: 8px;
+            display: flex; align-items: center; gap: 15px; font-weight: 500; transition: all 0.2s; white-space: nowrap;
+        }
+        #sidebar.collapsed .nav-link { padding: 12px; margin: 4px 5px; justify-content: center; gap: 0; }
+        #sidebar .nav-link:hover, #sidebar .nav-link.active { color: #fff; background-color: #1e293b; }
+        
+        /* FOOTER AL FONDO DEL SIDEBAR */
+        .sidebar-footer {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            background-color: #0b1120;
+        }
+
+        #content { margin-left: 260px; transition: all 0.3s ease; padding: 30px; }
+        #content.expanded { margin-left: 70px; }
+        
+        @media (max-width: 768px) {
+            #sidebar { left: -260px; }
+            #sidebar.mobile-show { left: 0; }
+            #content { margin-left: 0 !important; padding: 15px; }
+        }
+        
+        .card-stat { border: none; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+        .scanner-card-dark { background-color: #0f172a; color: #ffffff; border-radius: 16px; padding: 28px; }
+        .scanner-input-box { background-color: #090d16; border: 2px solid #059669; border-radius: 10px; color: #a7f3d0; font-family: monospace; font-size: 1.1rem; }
+        #reader, #reader-inv, #reader-pos { width: 100%; max-width: 400px; margin: 0 auto; border-radius: 10px; overflow: hidden; }
+
+        .modal-st-header { background-color: #1e293b; color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+        .modal-st-header .btn-close { filter: invert(1); }
+        .modal-content-st { border-radius: 12px; border: none; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .box-saldo { background-color: #e0f2fe; border-radius: 8px; color: #0369a1; font-weight: 600; text-align: center; padding: 10px; }
+
+        .modal-comprobante-header { background-color: #059669; color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+        .modal-comprobante-header .btn-close { filter: invert(1); }
+        
+        /* TICKET CON MARCA DE AGUA (logo_facha.png) */
+        .ticket-preview-box {
+            background-color: #ffffff; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 8px;
+            padding: 24px; 
+            font-family: monospace; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+            margin: 0 auto;
+            width: 100%;
+            max-width: 340px;
+        }
+        .ticket-preview-box.papel-58 { max-width: 250px; padding: 16px 12px; }
+        .ticket-preview-box::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 240px;
+            height: 140px;
+            background-image: url('static/logo_facha.png');
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            opacity: 0.12;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .ticket-preview-box > * { position: relative; z-index: 1; }
+    </style>
+    <style id="ticket-styles">
+        /* ESTILO DE TICKET TÉRMICO (vista previa e impresión) */
+        .tk { font-family: 'Courier New', Courier, monospace; color: #111; font-size: 13px; line-height: 1.35; }
+        .tk-logo { display: block; margin: 0 auto 6px; max-width: 110px; max-height: 110px; filter: grayscale(100%) contrast(1.15); }
+        .tk-nombre { text-align: center; font-weight: 700; font-size: 17px; letter-spacing: 3px; margin: 0; }
+        .tk-sub { text-align: center; font-size: 12px; margin: 2px 0 8px; }
+        .tk-titulo { display: table; margin: 0 auto 8px; border: 1.5px solid #111; padding: 2px 8px; font-weight: 700; font-size: 12px; letter-spacing: 1px; }
+        .tk-sep { border: 0; border-top: 1px dashed #9ca3af; margin: 7px 0; opacity: 1; }
+        .tk-sep-solido { border: 0; border-top: 2px solid #9ca3af; margin: 7px 0; opacity: 1; }
+        .tk-fila { display: flex; justify-content: space-between; gap: 8px; }
+        .tk-fila > span:last-child { text-align: right; white-space: nowrap; }
+        .tk-bold { font-weight: 700; }
+        .tk-item { margin: 4px 0; }
+        .tk-item-nombre { font-weight: 700; word-break: break-word; }
+        .tk-item-det { padding-left: 10px; }
+        .tk-total { font-weight: 700; font-size: 16px; margin: 2px 0; }
+        .tk-pie { text-align: center; font-size: 12px; margin-top: 6px; }
+        .tk-pie p { margin: 0; }
+        .papel-58 .tk { font-size: 11px; }
+        .papel-58 .tk-nombre { font-size: 14px; letter-spacing: 2px; }
+        .papel-58 .tk-total { font-size: 14px; }
+        .papel-58 .tk-logo { max-width: 85px; max-height: 85px; }
+
+        .auth-btn-google { background-color: #ffffff; color: #3c4043; border: 1px solid #dadce0; }
+        .auth-btn-google:hover { background-color: #f8f9fa; border-color: #d2e3fc; }
+        .auth-btn-ms { background-color: #2f2f2f; color: #ffffff; }
+        .auth-btn-ms:hover { background-color: #1f1f1f; color: #ffffff; }
+        .auth-btn-fb { background-color: #1877f2; color: #ffffff; }
+        .auth-btn-fb:hover { background-color: #166fe5; color: #ffffff; }
+        .hide-dropdown-icon::after { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- MODAL DE PRIMER INGRESO / AUTENTICACIÓN RÁPIDA -->
+    <div class="modal fade" id="modalWelcomeAuth" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-body p-4 text-center">
+                    <!-- LOGO DE LA WEB (logo.png) -->
+                    <div class="mb-3 d-flex justify-content-center">
+                        <img src="static/logo.png" alt="El Facha Celulares" style="width: 75px; height: 75px; object-fit: contain;">
+                    </div>
+                    
+                    <h4 class="fw-bold text-dark mb-1">¡Bienvenido a El Facha Celulares!</h4>
+                    <p class="text-muted small mb-4">Inicia sesión con tu cuenta de Google para guardar tus copias de seguridad en la nube, o ingresa como invitado:</p>
+
+                    <div class="d-flex flex-column gap-2 mb-4">
+                        <button id="btn-login-google" class="btn auth-btn-google fw-bold py-2 d-flex align-items-center justify-content-center gap-2" onclick="iniciarSesionProveedor('Google')">
+                            <i class="bi bi-google text-danger fs-5"></i> Iniciar sesión con Google
+                        </button>
+                        <div id="auth-error-msg" class="text-danger small d-none"></div>
+                        <button class="btn btn-light text-muted fw-bold py-2 border border-secondary border-opacity-25 mt-2" onclick="iniciarSesionProveedor('Invitado')">
+                            <i class="bi bi-person"></i> Ingresar como Invitado (Modo Local)
+                        </button>
+                    </div>
+
+                    <small class="text-muted" style="font-size: 0.75rem;">Con Google, las copias se guardan en la nube asociadas a tu cuenta. Como invitado, se descargan como archivo en este dispositivo.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MENÚ LATERAL -->
+    <nav id="sidebar">
+        <div>
+            <div class="sidebar-header">
+                <div class="d-flex align-items-center gap-2 hide-collapsed">
+                    <!-- LOGO E ÍCONO DE LA WEB (logo.png) -->
+                    <img src="static/logo.png" alt="El Facha Celulares" style="width: 40px; height: 40px; object-fit: contain;">
+                    <div class="hide-collapsed">
+                        <h5 class="m-0 fw-bold text-success text-uppercase" style="font-size: 0.8rem;">EL FACHA CELULARES</h5>
+                        <small class="text-white fw-semibold" style="font-size: 0.6rem;">Servicio Técnico y Accesorios</small>
+                    </div>
+                </div>
+                <button class="btn btn-dark btn-sm text-light border-0 px-2 py-1" onclick="toggleSidebar()" title="Ocultar/Mostrar Menú">
+                    <i class="bi bi-layout-sidebar-inset fs-5"></i>
+                </button>
+            </div>
+
+            <ul class="nav flex-column mt-3">
+                <li class="nav-item">
+                    <a href="#" class="nav-link active" onclick="cambiarSeccion('panel', this)">
+                        <i class="bi bi-grid-1x2-fill fs-5"></i>
+                        <span class="hide-collapsed">Panel Principal</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="cambiarSeccion('escaner', this)">
+                        <i class="bi bi-upc-scan fs-5 text-success"></i>
+                        <span class="hide-collapsed">Escáner / Movimiento</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="cambiarSeccion('tecnico', this)">
+                        <i class="bi bi-tools fs-5 text-warning"></i>
+                        <span class="hide-collapsed">Servicio Técnico</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="cambiarSeccion('inventario', this)">
+                        <i class="bi bi-box-seam fs-5"></i>
+                        <span class="hide-collapsed">Inventario y Precios</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="cambiarSeccion('pos', this)">
+                        <i class="bi bi-cart-check fs-5 text-primary"></i>
+                        <span class="hide-collapsed">Punto de Venta</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="cambiarSeccion('balance', this)">
+                        <i class="bi bi-graph-up-arrow fs-5 text-success"></i>
+                        <span class="hide-collapsed">Balance y Ganancias</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="cambiarSeccion('excel', this)">
+                        <i class="bi bi-file-earmark-excel fs-5 text-success"></i>
+                        <span class="hide-collapsed">Historial & Exportar</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- PIE DEL MENÚ LATERAL: PERFIL + ESTADO + BOTÓN GUARDAR PEQUEÑO -->
+        <div class="sidebar-footer p-3">
+            <div class="d-flex align-items-center justify-content-between">
+                <!-- Foto/Avatar + Estado (Menú desplegable) -->
+                <div class="dropdown">
+                    <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle hide-dropdown-icon" id="dropdownUser" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="position-relative me-2">
+                            <img id="user-avatar-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%2394a3b8'><path d='M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z'/><path fill-rule='evenodd' d='M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8-7a7 7 0 0 0-5.468 11.37C3.242 11.226 4.805 10 8 10s4.757 1.225 5.468 2.37A7 7 0 0 0 8 1z'/></svg>" 
+                                 alt="User" width="36" height="36" class="rounded-circle bg-secondary bg-opacity-25 p-1 border border-secondary">
+                            <!-- Indicador de estado en vivo -->
+                            <span id="status-indicator-dot" class="position-absolute bottom-0 end-0 p-1 bg-success border border-dark rounded-circle"></span>
+                        </div>
+                        <div class="hide-collapsed overflow-hidden">
+                            <span id="user-display-name" class="fw-bold d-block text-truncate" style="font-size: 0.85rem; max-width: 110px;">Invitado</span>
+                            <small id="user-status-text" class="text-success fw-semibold" style="font-size: 0.7rem;">Conectado</small>
+                        </div>
+                    </a>
+                    
+                    <!-- Pop-up desplegable al presionar el perfil -->
+                    <ul class="dropdown-menu dropdown-menu-dark shadow-lg border-secondary" aria-labelledby="dropdownUser" style="min-width: 220px;">
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" onclick="guardarEnCuentaAsociada()">
+                                <i class="bi bi-cloud-arrow-up-fill text-success fs-5"></i> 
+                                <div>
+                                    <strong class="d-block" style="font-size: 0.85rem;">Realizar copia de seguridad</strong>
+                                    <small class="text-muted" style="font-size: 0.72rem;">Guardar en cuenta asociada</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li id="menu-restaurar-backup" class="d-none">
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" onclick="restaurarUltimaCopia()">
+                                <i class="bi bi-cloud-arrow-down-fill text-info fs-5"></i>
+                                <div>
+                                    <strong class="d-block" style="font-size: 0.85rem;">Restaurar última copia</strong>
+                                    <small class="text-muted" style="font-size: 0.72rem;">Desde tu cuenta de Google</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider border-secondary my-1"></li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 text-danger py-2" href="#" onclick="cerrarSesionUsuario()">
+                                <i class="bi bi-box-arrow-right fs-5"></i> 
+                                <span style="font-size: 0.85rem;" class="fw-bold">Cerrar sesión</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Botón de guardado rápido con ícono pequeño de disquete -->
+                <button class="btn btn-outline-success btn-sm p-0 rounded-circle d-flex align-items-center justify-content-center" 
+                        onclick="guardarEnCuentaAsociada()" 
+                        title="Realizar copia de seguridad inmediata" 
+                        style="width: 34px; height: 34px;">
+                    <i class="bi bi-floppy-fill" style="font-size: 0.9rem;"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <div id="content">
+        <div class="d-md-none d-flex justify-content-between align-items-center mb-4 bg-dark text-white p-3 rounded shadow-sm border-bottom border-success">
+            <button class="btn btn-outline-success text-white" onclick="toggleMobileSidebar()"><i class="bi bi-list fs-4"></i></button>
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="m-0 fw-bold text-success text-uppercase" style="font-size: 0.85rem;">EL FACHA CELULARES</h5>
+            </div>
+            <div style="width: 40px;"></div>
+        </div>
+
+        <!-- SECCIÓN 1: PANEL PRINCIPAL -->
+        <div id="seccion-panel" class="section-view active">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+                <div>
+                    <h2 class="fw-bold mb-1">Panel Principal - El Facha Celulares</h2>
+                    <p class="text-muted m-0">Resumen operativo general de repuestos, reparaciones y ventas</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success fw-bold px-3 text-white" onclick="abrirEscanerModo('ENTRADA')">
+                        <i class="bi bi-plus-lg"></i> Ingreso de Stock
+                    </button>
+                    <button class="btn btn-danger fw-bold px-3 text-white" onclick="abrirEscanerModo('VENTA')">
+                        <i class="bi bi-cart-dash"></i> Egreso / Venta
+                    </button>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="card card-stat p-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <small class="text-muted fw-bold">VENTAS DE HOY</small>
+                                <h3 id="stat-ventas-hoy" class="fw-bold mt-1 mb-0">$0,00</h3>
+                                <small class="text-muted">Tiempo real</small>
+                            </div>
+                            <div class="p-2 bg-success bg-opacity-10 text-success rounded fs-4"><i class="bi bi-currency-dollar"></i></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card card-stat p-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <small class="text-muted fw-bold">REPARACIONES PENDIENTES</small>
+                                <h3 id="stat-rep-pendientes" class="fw-bold mt-1 mb-0">0</h3>
+                                <small class="text-warning fw-bold">En taller o revisión</small>
+                            </div>
+                            <div class="p-2 bg-warning bg-opacity-10 text-warning rounded fs-4"><i class="bi bi-tools"></i></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card card-stat p-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <small class="text-muted fw-bold">AVISO STOCK CRÍTICO</small>
+                                <h3 id="stat-stock-critico" class="fw-bold mt-1 mb-0 text-danger">0</h3>
+                                <small class="text-danger">Productos por reponer</small>
+                            </div>
+                            <div class="p-2 bg-danger bg-opacity-10 text-danger rounded fs-4"><i class="bi bi-exclamation-triangle"></i></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card card-stat p-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <small class="text-muted fw-bold">INGRESOS DEL MES</small>
+                                <h3 id="stat-ingresos-mes" class="fw-bold mt-1 mb-0">$0,00</h3>
+                                <small class="text-muted">Total acumulado</small>
+                            </div>
+                            <div class="p-2 bg-info bg-opacity-10 text-info rounded fs-4"><i class="bi bi-graph-up-arrow"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="card card-stat p-4 bg-white">
+                        <h5 class="fw-bold mb-3">Últimas Reparaciones Registradas</h5>
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead class="text-muted fs-7">
+                                    <tr><th>N° ORDEN</th><th>CLIENTE / TELÉFONO</th><th>EQUIPO / FALLA</th><th>ESTADO</th><th>PRESUPUESTO</th></tr>
+                                </thead>
+                                <tbody id="tabla-ultimas-reparaciones">
+                                    <tr><td colspan="5" class="text-center text-muted py-3">No hay reparaciones registradas.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card card-stat p-4 bg-white">
+                        <h5 class="fw-bold mb-3"><i class="bi bi-box text-danger"></i> Repuestos con Poco Stock</h5>
+                        <div id="lista-poco-stock" class="d-flex flex-column gap-2">
+                            <p class="text-muted text-center my-3">Todo en niveles óptimos.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 2: ESCÁNER / MOVIMIENTO -->
+        <div id="seccion-escaner" class="section-view">
+            <div class="d-flex gap-2 mb-3">
+                <button id="tab-ingreso" class="btn btn-success btn-lg fw-bold flex-fill text-white" onclick="setModoEscaner('ENTRADA')">
+                    <i class="bi bi-box-arrow-in-down"></i> MODO INGRESO (Stockear)
+                </button>
+                <button id="tab-egreso" class="btn btn-outline-danger btn-lg fw-bold flex-fill" onclick="setModoEscaner('VENTA')">
+                    <i class="bi bi-cart-dash"></i> MODO EGRESO (Venta / Salida)
+                </button>
+            </div>
+
+            <div class="scanner-card-dark mb-4">
+                <span id="badge-modo" class="badge bg-success mb-2 px-3 py-2 fs-6 text-white">MÓDULO DE INGRESO RÁPIDO</span>
+                <h3 id="titulo-modo" class="fw-bold text-white mb-2">Carga Directa de Stock con Código de Barras</h3>
+                <p class="text-white mb-4" style="opacity: 0.9;">Utilice pistola USB, cámara o escriba el código para operar.</p>
+
+                <div class="row g-4 align-items-center">
+                    <div class="col-md-7">
+                        <label class="form-label text-success fw-bold small text-uppercase">Escanear Código de Barras</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text bg-dark border-0 text-success"><i class="bi bi-qr-code-scan fs-4"></i></span>
+                            <input type="text" id="input-pistola" class="form-control scanner-input-box p-3" 
+                                   placeholder="Escanee o ingrese código y presione Enter..." autofocus
+                                   onkeypress="detectarEnterPistola(event)">
+                        </div>
+                        <div class="mt-4 d-flex gap-2 flex-wrap">
+                            <button id="btn-camara-toggle" class="btn btn-success fw-bold px-4 py-2 text-white" onclick="toggleCamara()">
+                                <i class="bi bi-camera"></i> Escanear con la Cámara
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <div id="wrapper-camara" class="text-center p-3 rounded bg-dark border border-secondary" style="display: none;">
+                            <div id="reader"></div>
+                            <button class="btn btn-sm btn-danger mt-2" onclick="toggleCamara()">Cerrar Cámara</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-stat p-4 bg-white mb-4" id="card-detalles-escaner" style="display: none;">
+                <h5 class="fw-bold text-dark mb-3">Detalles del Producto Escaneado</h5>
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Código</label>
+                        <input type="text" id="scan-codigo" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Nombre</label>
+                        <input type="text" id="scan-nombre" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Categoría</label>
+                        <input type="text" id="scan-categoria" class="form-control" value="Accesorios">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Costo ($)</label>
+                        <input type="number" id="scan-costo" class="form-control" step="0.01" value="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Precio ($)</label>
+                        <input type="number" id="scan-precio" class="form-control" step="0.01" value="0">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label small fw-bold">Cant.</label>
+                        <input type="number" id="scan-cantidad" class="form-control" value="1" min="1">
+                    </div>
+                    <div class="col-md-12 text-end">
+                        <button class="btn btn-primary fw-bold px-4" onclick="confirmarOperacionEscaner()">Confirmar Operación</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 3: SERVICIO TÉCNICO -->
+        <div id="seccion-tecnico" class="section-view">
+            <div class="card card-stat p-3 bg-white mb-4">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-5">
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="input-buscar-st" class="form-control border-start-0 bg-light" 
+                                   placeholder="Buscar por N° de orden, cliente, modelo o falla..." oninput="filtrarTablaST()">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <select id="select-filtro-estado" class="form-select bg-light" onchange="filtrarTablaST()">
+                            <option value="TODOS">Todos los Estados</option>
+                            <option value="En Reparación">En Reparación</option>
+                            <option value="Listo para Entregar">Listo para Entregar</option>
+                            <option value="Retirado">Retirado / Pagado</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-primary fw-bold w-100 py-2" onclick="abrirModalNuevaReparacion()">
+                            <i class="bi bi-plus-lg"></i> Ingresar Dispositivo
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-stat p-4 bg-white">
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="text-muted fs-7">
+                            <tr>
+                                <th>N° ORDEN</th><th>INGRESO</th><th>CLIENTE</th><th>EQUIPO / MODELO</th>
+                                <th>FALLA DECLARADA</th><th>ESTADO</th><th>PRESUPUESTO / SEÑA</th><th>ACCIONES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-servicio-tecnico">
+                            <tr><td colspan="8" class="text-center text-muted py-4">No hay reparaciones registradas.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 4: INVENTARIO & PRECIOS -->
+        <div id="seccion-inventario" class="section-view">
+            <div class="card card-stat p-3 bg-white mb-4">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-5">
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="input-buscar-inv" class="form-control border-start-0 bg-light" 
+                                   placeholder="Buscar por código de barras o nombre..." oninput="filtrarInventario()">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <select id="select-categoria-inv" class="form-select bg-light" onchange="filtrarInventario()">
+                            <option value="TODAS">Todas las Categorías</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-success fw-bold text-white w-100" onclick="exportarExcelInventario()">
+                            <i class="bi bi-file-earmark-excel"></i> Exportar Inventario
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-stat p-4 bg-white">
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="text-muted fs-7">
+                            <tr>
+                                <th>CÓD. BARRAS</th>
+                                <th>PRODUCTO / REPUESTO</th>
+                                <th>CATEGORÍA</th>
+                                <th>STOCK</th>
+                                <th>COSTO ($)</th>
+                                <th>PRECIO VENTA ($)</th>
+                                <th>ACCIONES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-inventario">
+                            <tr><td colspan="7" class="text-center text-muted py-4">Cargando inventario...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 5: PUNTO DE VENTA -->
+        <div id="seccion-pos" class="section-view">
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="card card-stat p-2 bg-white mb-3">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <button id="btn-tab-productos" class="btn btn-primary w-100 fw-bold py-2 text-white" onclick="setPosTab('productos')">Productos / Accesorios</button>
+                            </div>
+                            <div class="col-6">
+                                <button id="btn-tab-reparaciones" class="btn btn-outline-secondary w-100 fw-bold py-2" onclick="setPosTab('reparaciones')">Cobrar Reparación</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card card-stat p-3 bg-white mb-4">
+                        <div class="input-group mb-3" style="border: 2px solid #0d9488; border-radius: 8px; overflow: hidden;">
+                            <span class="input-group-text bg-white border-0 text-success"><i class="bi bi-upc-scan fs-5"></i></span>
+                            <input type="text" id="input-pos-barcode" class="form-control border-0 shadow-none" 
+                                   placeholder="Escanear Código de Barras con la pistola o presione Enter..." onkeypress="detectarCodigoPOS(event)">
+                            <button id="btn-camara-pos" class="btn btn-success fw-bold text-white border-0 rounded-0" style="background-color: #0d9488;" onclick="toggleCamaraPOS()" title="Buscar escaneando con la cámara">
+                                <i class="bi bi-camera"></i> <span class="d-none d-sm-inline">Escanear</span>
+                            </button>
+                        </div>
+                        <div id="wrapper-camara-pos" class="text-center p-3 mb-3 rounded bg-dark border border-secondary" style="display: none;">
+                            <div id="reader-pos"></div>
+                            <small class="d-block text-white-50 mt-2">Apunte la cámara al código de barras o QR para buscarlo</small>
+                            <button class="btn btn-sm btn-danger mt-2" onclick="toggleCamaraPOS()">Cerrar Cámara</button>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="input-pos-nombre" class="form-control border-start-0 bg-light shadow-none" 
+                                   placeholder="Buscar por nombre, código de barras o N° de Orden..." oninput="filtrarCatalogoPOS()">
+                        </div>
+                    </div>
+
+                    <div id="catalogo-pos" class="row g-3">
+                        <p class="text-muted text-center py-4">Cargando catálogo...</p>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card card-stat p-4 bg-white position-sticky" style="top: 20px;">
+                        <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                            <h5 class="fw-bold m-0"><i class="bi bi-cart3 text-primary"></i> Carrito de Venta</h5>
+                            <button class="btn btn-sm text-danger fw-bold border-0" onclick="vaciarCarrito()">Vaciar</button>
+                        </div>
+
+                        <div id="carrito-items" class="mb-3 overflow-auto" style="max-height: 250px;">
+                            <p class="text-muted text-center my-4">El carrito está vacío.</p>
+                        </div>
+
+                        <div class="border-top pt-3 mb-3">
+                            <div class="d-flex justify-content-between text-muted mb-1">
+                                <span>Subtotal</span>
+                                <span id="carrito-subtotal">$0,00</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center text-muted mb-3">
+                                <span>Descuento ($)</span>
+                                <input type="number" id="carrito-descuento" class="form-control form-control-sm text-end" style="width: 100px;" value="0" oninput="renderizarCarrito()">
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center fs-5 fw-bold text-dark">
+                                <span>Total</span>
+                                <span id="carrito-total" class="text-success">$0,00</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Método de Pago</label>
+                            <select id="carrito-metodo" class="form-select">
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                                <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                            </select>
+                        </div>
+
+                        <div class="row g-2 mb-4">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold text-muted">Paga con ($)</label>
+                                <input type="number" id="carrito-pagacon" class="form-control" value="0" oninput="calcularVuelto()">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold text-muted">Vuelto ($)</label>
+                                <input type="text" id="carrito-vuelto" class="form-control fw-bold text-success bg-light" value="$0,00" readonly>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-success fw-bold w-100 py-3 text-white shadow-sm" style="background-color: #059669; border: none;" onclick="finalizarVentaPOS()">
+                            <i class="bi bi-check-circle-fill"></i> Finalizar y Cobrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 6: BALANCE Y GANANCIAS -->
+        <div id="seccion-balance" class="section-view">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+                <div>
+                    <h2 class="fw-bold mb-1">Balance y Ganancias</h2>
+                    <p class="text-muted m-0">Comparativa general de inversiones, ventas de productos e ingresos de servicio técnico</p>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card card-stat p-3 bg-white border-start border-danger border-4">
+                        <small class="text-muted fw-bold">TOTAL INVERTIDO (STOCK + REPUESTOS)</small>
+                        <h3 id="bal-total-inversion" class="fw-bold mt-1 mb-0 text-danger">$0,00</h3>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card card-stat p-3 bg-white border-start border-primary border-4">
+                        <small class="text-muted fw-bold">TOTAL INGRESOS (VENTAS + REPARACIONES)</small>
+                        <h3 id="bal-total-vendido" class="fw-bold mt-1 mb-0 text-primary">$0,00</h3>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card card-stat p-3 bg-white border-start border-success border-4">
+                        <small class="text-muted fw-bold">GANANCIA NETA TOTAL</small>
+                        <h3 id="bal-total-ganancia" class="fw-bold mt-1 mb-0 text-success">$0,00</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-stat p-4 bg-white mb-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-tools text-warning"></i> Desglose de Servicio Técnico (Reparaciones)</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="text-muted fs-7">
+                            <tr>
+                                <th>N° ORDEN</th>
+                                <th>EQUIPO</th>
+                                <th>ESTADO</th>
+                                <th>INGRESADO ($)</th>
+                                <th>COSTO REPUESTO ($)</th>
+                                <th>GANANCIA REP. ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-balance-reparaciones">
+                            <tr><td colspan="6" class="text-center text-muted py-3">Cargando reparaciones...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card card-stat p-4 bg-white">
+                <h5 class="fw-bold mb-3"><i class="bi bi-box-seam text-primary"></i> Desglose de Inventario y Productos</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="text-muted fs-7">
+                            <tr>
+                                <th>CÓDIGO</th>
+                                <th>PRODUCTO</th>
+                                <th>STOCK</th>
+                                <th>COSTO UNIT.</th>
+                                <th>INVERSIÓN TOTAL</th>
+                                <th>TOTAL VENDIDO</th>
+                                <th>GANANCIA NETA</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-balance">
+                            <tr><td colspan="7" class="text-center text-muted py-4">Calculando balance...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 7: HISTORIAL & EXPORTAR EXCEL CON FILTRO DE FECHAS -->
+        <div id="seccion-excel" class="section-view">
+            <div class="card card-stat p-3 bg-white mb-4">
+                <div class="row align-items-center g-3">
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="p-2 bg-success bg-opacity-10 text-success rounded fs-4"><i class="bi bi-file-earmark-excel"></i></div>
+                            <div>
+                                <h4 class="fw-bold m-0 text-dark" style="font-size: 1.1rem;">Historial de Ventas</h4>
+                                <small id="lbl-conteo-ventas" class="text-muted">Se encontraron 0 ventas.</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="d-flex align-items-center justify-content-md-end gap-2 flex-wrap">
+                            <div class="d-flex align-items-center gap-1">
+                                <small class="fw-bold text-muted">Desde:</small>
+                                <input type="date" id="filtro-fecha-desde" class="form-control form-control-sm" style="width: 130px;">
+                            </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <small class="fw-bold text-muted">Hasta:</small>
+                                <input type="date" id="filtro-fecha-hasta" class="form-control form-control-sm" style="width: 130px;">
+                            </div>
+                            <button class="btn btn-sm btn-primary fw-bold px-3 text-white" onclick="cargarHistorialVentas()">
+                                <i class="bi bi-filter"></i> Filtrar
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary fw-bold px-2" onclick="limpiarFiltroFechas()" title="Ver todo">
+                                <i class="bi bi-arrow-counterclockwise"></i>
+                            </button>
+                            <button class="btn btn-sm btn-success fw-bold text-white px-3" style="background-color: #0d7a57; border: none;" onclick="exportarExcelVentas()">
+                                <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-stat p-4 bg-white">
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="text-muted fs-7">
+                            <tr>
+                                <th>N° RECIBO</th>
+                                <th>FECHA Y HORA</th>
+                                <th>DETALLE DE PRODUCTOS / SERVICIOS</th>
+                                <th>MÉTODO DE PAGO</th>
+                                <th>MONTO TOTAL ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-historial-ventas">
+                            <tr><td colspan="5" class="text-center text-muted py-4">No hay ventas registradas.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VENTANA INGRESAR DISPOSITIVO -->
+    <div class="modal fade" id="modalNuevaReparacion" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content modal-content-st">
+                <div class="modal-header modal-st-header">
+                    <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+                        <i class="bi bi-tools"></i> Ingresar Dispositivo
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="form-reparacion">
+                        <input type="hidden" id="st-id">
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Cliente</label>
+                            <input type="text" id="st-cliente" class="form-control" required placeholder="Nombre del cliente">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Teléfono</label>
+                            <input type="text" id="st-telefono" class="form-control" placeholder="Ej: 381 1234567">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Equipo / Modelo</label>
+                            <input type="text" id="st-equipo" class="form-control" required placeholder="Ej: Samsung A52 / iPhone 11">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Falla Declarada</label>
+                            <textarea id="st-falla" class="form-control" rows="3" placeholder="Detalle la falla..."></textarea>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-danger"><i class="bi bi-shield-lock"></i> Costo Repuesto (Interno $)</label>
+                                <input type="number" id="st-costo-repuesto" class="form-control border-danger" step="0.01" value="0">
+                                <small class="text-muted" style="font-size: 0.75rem;">No aparece en el ticket del cliente.</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">Estado</label>
+                                <select id="st-estado" class="form-select">
+                                    <option value="En Reparación">En Reparación</option>
+                                    <option value="Listo para Entregar">Listo para Entregar</option>
+                                    <option value="Retirado">Retirado / Pagado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">Presupuesto ($)</label>
+                                <input type="number" id="st-presupuesto" class="form-control" step="0.01" value="0" oninput="calcularSaldoRestante()">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">Seña ($)</label>
+                                <div class="input-group">
+                                    <input type="number" id="st-senia" class="form-control" step="0.01" value="0" oninput="calcularSaldoRestante()">
+                                    <span class="input-group-text bg-light text-success"><i class="bi bi-check-lg"></i></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="box-saldo mb-3" id="box-saldo-restante">
+                            Saldo Restante: <span id="lbl-saldo-restante">$0,00</span>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary fw-bold px-4 text-white" onclick="guardarReparacion()">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL COMPROBANTE DE VENTA POS -->
+    <div class="modal fade" id="modalTicketVenta" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius: 12px;">
+                <div class="modal-header modal-comprobante-header">
+                    <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+                        <i class="bi bi-receipt"></i> Comprobante de Venta
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <div class="ticket-preview-box" id="ticket-preview-content"></div>
+                </div>
+                <div class="modal-footer bg-light border-0 pt-0">
+                    <select class="form-select form-select-sm me-auto selector-papel" style="width: auto;" onchange="cambiarPapelTicket(this.value)" aria-label="Tamaño de papel">
+                        <option value="80">Papel 80 mm</option>
+                        <option value="58">Papel 58 mm</option>
+                    </select>
+                    <button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-success fw-bold px-4" style="background-color: #059669;" onclick="imprimirTicketVenta()">
+                        <i class="bi bi-printer-fill"></i> Imprimir Comprobante
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL COMPROBANTE DE SERVICIO TÉCNICO -->
+    <div class="modal fade" id="modalComprobanteST" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius: 12px;">
+                <div class="modal-header modal-comprobante-header">
+                    <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+                        <i class="bi bi-printer"></i> Comprobante
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <div class="ticket-preview-box" id="comprobante-st-content"></div>
+                </div>
+                <div class="modal-footer bg-light border-0 pt-0">
+                    <select class="form-select form-select-sm me-auto selector-papel" style="width: auto;" onchange="cambiarPapelTicket(this.value)" aria-label="Tamaño de papel">
+                        <option value="80">Papel 80 mm</option>
+                        <option value="58">Papel 58 mm</option>
+                    </select>
+                    <button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-success fw-bold px-4" style="background-color: #059669;" onclick="imprimirComprobanteSTModal()">
+                        <i class="bi bi-printer-fill"></i> Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS DE LA APLICACIÓN -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let modalReparacionBS = null;
+        let modalTicketBS = null;
+        let modalComprobanteSTBS = null;
+        let modalWelcomeBS = null;
+
+        let productosCache = [];
+        let reparacionesCache = [];
+        let historialVentasCache = [];
+        let carritoPOS = [];
+        let posTabModo = 'productos';
+        window.modoActualEscaner = 'ENTRADA';
+
+        // PERSISTENCIA EN LOCALSTORAGE Y GESTIÓN DE USUARIO EN EL SIDEBAR
+        function initLocalDatabase() {
+            // Limpieza única: deja la web sin datos cargados (inventario, servicio, historial, balance y punto de venta)
+            if (localStorage.getItem('facha_limpieza_v1') !== '1') {
+                localStorage.setItem('facha_productos', JSON.stringify([]));
+                localStorage.setItem('facha_reparaciones', JSON.stringify([]));
+                localStorage.setItem('facha_historial', JSON.stringify([]));
+                localStorage.setItem('facha_limpieza_v1', '1');
+            }
+            if (!localStorage.getItem('facha_productos')) {
+                localStorage.setItem('facha_productos', JSON.stringify([]));
+            }
+            if (!localStorage.getItem('facha_reparaciones')) {
+                localStorage.setItem('facha_reparaciones', JSON.stringify([]));
+            }
+            if (!localStorage.getItem('facha_historial')) {
+                localStorage.setItem('facha_historial', JSON.stringify([]));
+            }
+
+            productosCache = JSON.parse(localStorage.getItem('facha_productos') || '[]');
+            reparacionesCache = JSON.parse(localStorage.getItem('facha_reparaciones') || '[]');
+            historialVentasCache = JSON.parse(localStorage.getItem('facha_historial') || '[]');
+
+            iniciarAutenticacion();
+        }
+
+        let usuarioGoogle = null;
+        const AVATAR_DEFAULT = document.getElementById('user-avatar-img') ? document.getElementById('user-avatar-img').src : '';
+
+        async function iniciarAutenticacion() {
+            const auth = window.fachaAuth;
+            if (auth) {
+                try {
+                    await auth.handleAuthCallback();
+                } catch (e) {
+                    mostrarErrorAuth('No se pudo completar el inicio de sesión con Google. Intenta nuevamente.');
+                }
+                usuarioGoogle = await auth.getUser();
+            }
+
+            if (usuarioGoogle) {
+                localStorage.setItem('facha_auth_provider', 'Google');
+                actualizarUserDisplay('Google');
+                return;
+            }
+
+            const authProvider = localStorage.getItem('facha_auth_provider');
+            if (authProvider === 'Invitado') {
+                actualizarUserDisplay('Invitado');
+            } else {
+                localStorage.removeItem('facha_auth_provider');
+                actualizarUserDisplay('Invitado');
+                abrirModalAuth();
+            }
+        }
+
+        function mostrarErrorAuth(msg) {
+            const el = document.getElementById('auth-error-msg');
+            if (el) { el.innerText = msg; el.classList.remove('d-none'); }
+            abrirModalAuth();
+        }
+
+        function abrirModalAuth() {
+            if (!modalWelcomeBS) {
+                modalWelcomeBS = new bootstrap.Modal(document.getElementById('modalWelcomeAuth'));
+            }
+            modalWelcomeBS.show();
+        }
+
+        function iniciarSesionProveedor(prov) {
+            if (prov === 'Google') {
+                if (!window.fachaAuth) {
+                    mostrarErrorAuth('El servicio de inicio de sesión no está disponible. Revisa tu conexión a internet.');
+                    return;
+                }
+                const btn = document.getElementById('btn-login-google');
+                if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Redirigiendo a Google...'; }
+                try {
+                    // Redirige directamente a Google para elegir la cuenta
+                    window.fachaAuth.oauthLogin('google');
+                } catch (e) {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-google text-danger fs-5"></i> Iniciar sesión con Google'; }
+                    mostrarErrorAuth('No se pudo iniciar sesión con Google en este momento.');
+                }
+                return;
+            }
+
+            localStorage.setItem('facha_auth_provider', 'Invitado');
+            actualizarUserDisplay('Invitado');
+            if (modalWelcomeBS) modalWelcomeBS.hide();
+        }
+
+        function actualizarUserDisplay(txt) {
+            const elName = document.getElementById('user-display-name');
+            const elStatus = document.getElementById('user-status-text');
+            const elDot = document.getElementById('status-indicator-dot');
+            const elAvatar = document.getElementById('user-avatar-img');
+            const elRestore = document.getElementById('menu-restaurar-backup');
+
+            if (txt === 'Google' && usuarioGoogle) {
+                const nombre = usuarioGoogle.name || usuarioGoogle.email || 'Google';
+                if (elName) { elName.innerText = nombre.split(' ')[0]; elName.title = usuarioGoogle.email || ''; }
+                if (elStatus) { elStatus.innerText = 'Google conectado'; elStatus.className = 'text-success fw-semibold'; }
+                if (elDot) elDot.className = 'position-absolute bottom-0 end-0 p-1 bg-success border border-dark rounded-circle';
+                if (elAvatar && usuarioGoogle.pictureUrl) { elAvatar.src = usuarioGoogle.pictureUrl; elAvatar.referrerPolicy = 'no-referrer'; }
+                if (elRestore) elRestore.classList.remove('d-none');
+            } else {
+                if (elName) { elName.innerText = 'Invitado'; elName.title = ''; }
+                if (elStatus) { elStatus.innerText = 'Modo Local'; elStatus.className = 'text-muted fw-semibold'; }
+                if (elDot) elDot.className = 'position-absolute bottom-0 end-0 p-1 bg-secondary border border-dark rounded-circle';
+                if (elAvatar && AVATAR_DEFAULT) elAvatar.src = AVATAR_DEFAULT;
+                if (elRestore) elRestore.classList.add('d-none');
+            }
+        }
+
+        async function guardarEnCuentaAsociada() {
+            if (!usuarioGoogle) {
+                exportarBackupJSON();
+                if (confirm('Copia descargada en este dispositivo (modo invitado).\n\n¿Deseas iniciar sesión con Google para guardar tus copias en la nube?')) {
+                    abrirModalAuth();
+                }
+                return;
+            }
+            try {
+                const res = await fetch('/api/backups', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        productos: productosCache,
+                        reparaciones: reparacionesCache,
+                        historial: historialVentasCache
+                    })
+                });
+                if (res.status === 401) {
+                    alert('Tu sesión de Google expiró. Inicia sesión nuevamente.');
+                    usuarioGoogle = null;
+                    localStorage.removeItem('facha_auth_provider');
+                    actualizarUserDisplay('Invitado');
+                    abrirModalAuth();
+                    return;
+                }
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                alert(`Copia de seguridad guardada en la nube para la cuenta: ${usuarioGoogle.email}`);
+            } catch (e) {
+                alert('No se pudo guardar la copia en la nube. Revisa tu conexión e intenta nuevamente.');
+            }
+        }
+
+        async function restaurarUltimaCopia() {
+            if (!usuarioGoogle) { abrirModalAuth(); return; }
+            try {
+                const lista = await fetch('/api/backups', { credentials: 'same-origin' });
+                if (!lista.ok) throw new Error('HTTP ' + lista.status);
+                const copias = await lista.json();
+                if (!copias.length) { alert('Todavía no hay copias guardadas en tu cuenta.'); return; }
+                const ultima = copias[0];
+                const fecha = new Date(ultima.createdAt).toLocaleString('es-AR');
+                if (!confirm(`¿Restaurar la copia del ${fecha}?\n\nSe reemplazarán los datos actuales de este dispositivo.`)) return;
+                const res = await fetch('/api/backups?id=' + encodeURIComponent(ultima.id), { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const { data } = await res.json();
+                productosCache = data.productos || [];
+                reparacionesCache = data.reparaciones || [];
+                historialVentasCache = data.historial || [];
+                guardarDatosLocal();
+                alert('Copia restaurada correctamente.');
+                location.reload();
+            } catch (e) {
+                alert('No se pudo restaurar la copia. Intenta nuevamente.');
+            }
+        }
+
+        async function cerrarSesionUsuario() {
+            if (confirm("¿Deseas cerrar sesión?")) {
+                if (usuarioGoogle && window.fachaAuth) {
+                    try { await window.fachaAuth.logout(); } catch (e) {}
+                }
+                usuarioGoogle = null;
+                localStorage.removeItem('facha_auth_provider');
+                actualizarUserDisplay('Invitado');
+                abrirModalAuth();
+            }
+        }
+
+        function guardarDatosLocal() {
+            localStorage.setItem('facha_productos', JSON.stringify(productosCache));
+            localStorage.setItem('facha_reparaciones', JSON.stringify(reparacionesCache));
+            localStorage.setItem('facha_historial', JSON.stringify(historialVentasCache));
+        }
+
+        function exportarBackupJSON() {
+            const dataStr = JSON.stringify({
+                auth: localStorage.getItem('facha_auth_provider') || 'Invitado',
+                fecha_backup: new Date().toISOString(),
+                productos: productosCache,
+                reparaciones: reparacionesCache,
+                historial: historialVentasCache
+            }, null, 2);
+
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const provName = (localStorage.getItem('facha_auth_provider') || 'Local').split(' ')[0];
+            a.href = url;
+            a.download = `backup_facha_${provName}_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+            document.getElementById('content').classList.toggle('expanded');
+        }
+
+        function toggleMobileSidebar() {
+            document.getElementById('sidebar').classList.toggle('mobile-show');
+        }
+
+        function cambiarSeccion(seccionId, elemento) {
+            document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active'));
+            document.getElementById('seccion-' + seccionId).classList.add('active');
+            
+            document.querySelectorAll('#sidebar .nav-link').forEach(el => el.classList.remove('active'));
+            if (elemento) {
+                elemento.classList.add('active');
+            }
+
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.remove('mobile-show');
+            }
+
+            if (seccionId !== 'escaner' && camaraActiva) detenerCamara();
+            if (seccionId !== 'pos' && camaraPOSActiva) detenerCamaraPOS();
+            if (seccionId === 'panel') cargarDashboard();
+            if (seccionId === 'tecnico') cargarTablaST();
+            if (seccionId === 'inventario') cargarInventario();
+            if (seccionId === 'pos') cargarModuloPOS();
+            if (seccionId === 'balance') cargarBalanceGanancias();
+            if (seccionId === 'excel') cargarHistorialVentas();
+        }
+
+        function cargarDashboard() {
+            const hoyStr = new Date().toISOString().split('T')[0];
+            
+            const ventasHoy = historialVentasCache
+                .filter(h => h.fecha.startsWith(hoyStr))
+                .reduce((sum, h) => sum + (h.total || 0), 0);
+
+            const repPendientes = reparacionesCache.filter(r => r.estado !== 'Retirado').length;
+            const stockCritico = productosCache.filter(p => p.stock <= 2).length;
+
+            const mesActual = new Date().toISOString().substring(0, 7);
+            const ingresosMes = historialVentasCache
+                .filter(h => h.fecha.startsWith(mesActual))
+                .reduce((sum, h) => sum + (h.total || 0), 0);
+
+            document.getElementById('stat-ventas-hoy').innerText = `$${ventasHoy.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+            document.getElementById('stat-rep-pendientes').innerText = repPendientes;
+            document.getElementById('stat-stock-critico').innerText = stockCritico;
+            document.getElementById('stat-ingresos-mes').innerText = `$${ingresosMes.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+
+            const tbodyRep = document.getElementById('tabla-ultimas-reparaciones');
+            const ultimas = reparacionesCache.slice(-5).reverse();
+            if (ultimas.length > 0) {
+                tbodyRep.innerHTML = ultimas.map(r => `
+                    <tr>
+                        <td><span class="badge bg-dark">${r.n_orden}</span></td>
+                        <td><strong>${r.cliente}</strong><br><small class="text-muted">${r.telefono || '-'}</small></td>
+                        <td>${r.equipo}<br><small class="text-muted">${r.falla}</small></td>
+                        <td><span class="badge ${r.estado === 'Retirado' ? 'bg-success' : 'bg-warning text-dark'}">${r.estado}</span></td>
+                        <td>$${r.presupuesto.toLocaleString('es-AR')}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbodyRep.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay reparaciones registradas.</td></tr>';
+            }
+
+            const listPocoStock = document.getElementById('lista-poco-stock');
+            const pocoStock = productosCache.filter(p => p.stock <= 3);
+            if (pocoStock.length > 0) {
+                listPocoStock.innerHTML = pocoStock.map(s => `
+                    <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                        <span class="fw-semibold">${s.nombre}</span>
+                        <span class="badge bg-danger">${s.stock} un.</span>
+                    </div>
+                `).join('');
+            } else {
+                listPocoStock.innerHTML = '<p class="text-muted text-center my-3">Todo en niveles óptimos.</p>';
+            }
+        }
+
+        function cargarTablaST() { renderizarTablaST(reparacionesCache); }
+
+        function renderizarTablaST(lista) {
+            const tbody = document.getElementById('tabla-servicio-tecnico');
+            if (!lista || lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No hay órdenes de servicio técnico registradas.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = lista.map(r => {
+                const saldo = (r.presupuesto || 0) - (r.senia || 0);
+                return `
+                    <tr>
+                        <td><span class="badge bg-dark">${r.n_orden}</span></td>
+                        <td><small class="text-muted">${r.fecha}</small></td>
+                        <td><strong>${r.cliente}</strong><br><small class="text-muted">${r.telefono || '-'}</small></td>
+                        <td><strong>${r.equipo}</strong></td>
+                        <td><small>${r.falla || '-'}</small></td>
+                        <td><span class="badge ${r.estado === 'Retirado' ? 'bg-success' : (r.estado === 'Listo para Entregar' ? 'bg-info text-dark' : 'bg-warning text-dark')}">${r.estado}</span></td>
+                        <td>
+                            <div><strong>$${r.presupuesto.toLocaleString('es-AR')}</strong></div>
+                            <small class="text-muted">Seña: $${r.senia.toLocaleString('es-AR')} | Resta: $${saldo.toLocaleString('es-AR')}</small>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-primary" onclick='imprimirComprobante(${JSON.stringify(r)})' title="Imprimir Comprobante">
+                                    <i class="bi bi-printer"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="eliminarReparacion(${r.id})" title="Eliminar">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function abrirModalNuevaReparacion() {
+            document.getElementById('form-reparacion').reset();
+            document.getElementById('st-id').value = '';
+            document.getElementById('st-costo-repuesto').value = '0';
+            calcularSaldoRestante();
+            
+            if (!modalReparacionBS) {
+                modalReparacionBS = new bootstrap.Modal(document.getElementById('modalNuevaReparacion'));
+            }
+            modalReparacionBS.show();
+        }
+
+        function calcularSaldoRestante() {
+            const presupuesto = parseFloat(document.getElementById('st-presupuesto').value || 0);
+            const senia = parseFloat(document.getElementById('st-senia').value || 0);
+            const saldo = presupuesto - senia;
+            document.getElementById('lbl-saldo-restante').innerText = `$${saldo.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+        }
+
+        function guardarReparacion() {
+            const cliente = document.getElementById('st-cliente').value.trim();
+            const telefono = document.getElementById('st-telefono').value.trim();
+            const equipo = document.getElementById('st-equipo').value.trim();
+            const falla = document.getElementById('st-falla').value.trim();
+            const estado = document.getElementById('st-estado').value;
+            const presupuesto = parseFloat(document.getElementById('st-presupuesto').value || 0);
+            let senia = parseFloat(document.getElementById('st-senia').value || 0);
+            const costoRepuesto = parseFloat(document.getElementById('st-costo-repuesto').value || 0);
+
+            if (!cliente || !equipo) {
+                alert("Por favor complete los campos de Cliente y Equipo.");
+                return;
+            }
+
+            if (estado === 'Retirado') senia = presupuesto;
+
+            const nuevaOrden = {
+                id: Date.now(),
+                n_orden: `ORD-${1000 + reparacionesCache.length + 1}`,
+                cliente: cliente,
+                telefono: telefono,
+                equipo: equipo,
+                falla: falla,
+                estado: estado,
+                presupuesto: presupuesto,
+                senia: senia,
+                costo_repuesto: costoRepuesto,
+                fecha: new Date().toISOString().split('T')[0]
+            };
+
+            reparacionesCache.push(nuevaOrden);
+            guardarDatosLocal();
+
+            if (modalReparacionBS) modalReparacionBS.hide();
+
+            imprimirComprobante(nuevaOrden);
+            cargarTablaST();
+            cargarDashboard();
+        }
+
+        function eliminarReparacion(id) {
+            if (confirm("¿Está seguro de eliminar esta orden de servicio?")) {
+                reparacionesCache = reparacionesCache.filter(r => r.id !== id);
+                guardarDatosLocal();
+                cargarTablaST();
+                cargarDashboard();
+            }
+        }
+
+        function imprimirComprobante(r) {
+            const presupuesto = r.presupuesto || 0;
+            const senia = r.senia || 0;
+            const saldo = presupuesto - senia;
+            const fechaStr = r.fecha || new Date().toISOString().split('T')[0];
+
+            const fila = (izq, der, cls = '') => `<div class="tk-fila ${cls}"><span>${izq}</span><span>${der}</span></div>`;
+            const ticketHTML = `
+                <div class="tk">
+                    ${encabezadoTicket('ORDEN DE SERVICIO')}
+                    <hr class="tk-sep">
+                    ${fila(escTk(r.n_orden), escTk(formatearFechaTicket(fechaStr)), 'tk-bold')}
+                    <hr class="tk-sep">
+                    ${fila('Cliente', escTk(r.cliente))}
+                    ${fila('Teléfono', escTk(r.telefono || '-'))}
+                    ${fila('Equipo', escTk(r.equipo))}
+                    <div class="tk-item"><div>Falla:</div><div class="tk-item-det tk-bold">${escTk(r.falla || 'Revisión general')}</div></div>
+                    <hr class="tk-sep">
+                    ${fila('Presupuesto', formatearMontoTicket(presupuesto))}
+                    ${fila('Abonado', formatearMontoTicket(senia))}
+                    <hr class="tk-sep-solido">
+                    ${fila('SALDO', formatearMontoTicket(saldo), 'tk-total')}
+                    <hr class="tk-sep-solido">
+                    ${pieTicket('Conservar este comprobante para retirar el equipo.')}
+                </div>
+            `;
+
+            document.getElementById('comprobante-st-content').innerHTML = ticketHTML;
+            aplicarPapelTicket();
+
+            if (!modalComprobanteSTBS) {
+                modalComprobanteSTBS = new bootstrap.Modal(document.getElementById('modalComprobanteST'));
+            }
+            modalComprobanteSTBS.show();
+        }
+
+        function cargarModuloPOS() { renderizarCatalogoPOS(); }
+
+        function setPosTab(tab) {
+            posTabModo = tab;
+            const btnProd = document.getElementById('btn-tab-productos');
+            const btnRep = document.getElementById('btn-tab-reparaciones');
+            if (tab === 'productos') {
+                if (btnProd) btnProd.className = "btn btn-primary w-100 fw-bold py-2 text-white";
+                if (btnRep) btnRep.className = "btn btn-outline-secondary w-100 fw-bold py-2";
+            } else {
+                if (btnProd) btnProd.className = "btn btn-outline-secondary w-100 fw-bold py-2";
+                if (btnRep) btnRep.className = "btn btn-primary w-100 fw-bold py-2 text-white";
+            }
+            renderizarCatalogoPOS();
+        }
+
+        function renderizarCatalogoPOS() {
+            const contenedor = document.getElementById('catalogo-pos');
+            const query = (document.getElementById('input-pos-nombre').value || '').toLowerCase().trim();
+
+            if (posTabModo === 'productos') {
+                const filtrados = productosCache.filter(p => 
+                    p.nombre.toLowerCase().includes(query) || 
+                    p.codigo.toLowerCase().includes(query)
+                );
+                if (filtrados.length === 0) {
+                    contenedor.innerHTML = '<p class="text-muted text-center py-4">No se encontraron productos.</p>';
+                    return;
+                }
+                contenedor.innerHTML = filtrados.map(p => `
+                    <div class="col-md-4">
+                        <div class="card h-100 shadow-sm border-0 p-3 bg-white" onclick='agregarProductoAlCarrito(${JSON.stringify(p)})' style="cursor: pointer;">
+                            <span class="badge bg-secondary mb-2 w-auto me-auto">${p.categoria}</span>
+                            <h6 class="fw-bold mb-1">${p.nombre}</h6>
+                            <small class="text-muted">Stock: ${p.stock} un. | Cód: ${p.codigo}</small>
+                            <h5 class="fw-bold text-success mt-2 m-0">$${p.precio.toLocaleString('es-AR')}</h5>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                const pend = reparacionesCache.filter(r => r.estado !== 'Retirado');
+                const filtradas = pend.filter(r => 
+                    (r.n_orden || '').toLowerCase().includes(query) || 
+                    (r.cliente || '').toLowerCase().includes(query) || 
+                    (r.equipo || '').toLowerCase().includes(query)
+                );
+                if (filtradas.length === 0) {
+                    contenedor.innerHTML = '<p class="text-muted text-center py-4">No hay reparaciones pendientes para cobrar.</p>';
+                    return;
+                }
+                contenedor.innerHTML = filtradas.map(r => {
+                    const saldo = r.presupuesto - r.senia;
+                    return `
+                        <div class="col-md-6">
+                            <div class="card h-100 shadow-sm border-0 p-3 bg-white" onclick='agregarReparacionAlCarrito(${JSON.stringify(r)})' style="cursor: pointer;">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="badge bg-dark">${r.n_orden}</span>
+                                    <span class="badge bg-warning text-dark">${r.estado}</span>
+                                </div>
+                                <h6 class="fw-bold mb-1">${r.cliente}</h6>
+                                <small class="text-muted">${r.equipo} - Falla: ${r.falla || 'Revisión'}</small>
+                                <div class="mt-2 text-end">
+                                    <small class="text-muted d-block">Presupuesto: $${r.presupuesto.toLocaleString('es-AR')} | Seña: $${r.senia.toLocaleString('es-AR')}</small>
+                                    <h5 class="fw-bold text-primary m-0">A Cobrar: $${saldo.toLocaleString('es-AR')}</h5>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function agregarProductoAlCarrito(p) {
+            const existente = carritoPOS.find(item => item.codigo === p.codigo);
+            if (existente) {
+                if (existente.cantidad + 1 > p.stock) {
+                    alert("No hay suficiente stock disponible.");
+                    return;
+                }
+                existente.cantidad += 1;
+            } else {
+                if (p.stock < 1) {
+                    alert("Producto sin stock.");
+                    return;
+                }
+                carritoPOS.push({
+                    codigo: p.codigo,
+                    nombre: p.nombre,
+                    precio: p.precio,
+                    stockMax: p.stock,
+                    cantidad: 1,
+                    es_reparacion: false
+                });
+            }
+            renderizarCarrito();
+        }
+
+        function agregarReparacionAlCarrito(r) {
+            const existente = carritoPOS.find(item => item.id === r.id && item.es_reparacion);
+            if (existente) {
+                alert("Esta reparación ya está en el carrito.");
+                return;
+            }
+            const saldo = r.presupuesto - r.senia;
+            carritoPOS.push({
+                id: r.id,
+                n_orden: r.n_orden,
+                nombre: `Reparación ${r.n_orden} (${r.equipo})`,
+                precio: saldo,
+                cantidad: 1,
+                es_reparacion: true
+            });
+            renderizarCarrito();
+        }
+
+        function renderizarCarrito() {
+            const contenedor = document.getElementById('carrito-items');
+            if (carritoPOS.length === 0) {
+                contenedor.innerHTML = '<p class="text-muted text-center my-4">El carrito está vacío.</p>';
+                document.getElementById('carrito-subtotal').innerText = '$0,00';
+                document.getElementById('carrito-total').innerText = '$0,00';
+                document.getElementById('carrito-vuelto').value = '$0,00';
+                return;
+            }
+
+            let subtotal = 0;
+            contenedor.innerHTML = carritoPOS.map((item, index) => {
+                const totalItem = item.precio * item.cantidad;
+                subtotal += totalItem;
+                return `
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                        <div style="flex: 1; padding-right: 8px;">
+                            <strong style="font-size: 0.85rem;" class="d-block">${item.nombre}</strong>
+                            <small class="text-muted">$${item.precio.toLocaleString('es-AR')} c/u</small>
+                        </div>
+                        <div class="d-flex align-items-center gap-1">
+                            <span class="fw-bold text-success me-2" style="font-size: 0.85rem;">$${totalItem.toLocaleString('es-AR')}</span>
+                            <button class="btn btn-sm text-danger p-0 border-0" onclick="quitarDelCarrito(${index})"><i class="bi bi-x-circle-fill"></i></button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const descuento = parseFloat(document.getElementById('carrito-descuento').value || 0);
+            const total = Math.max(0, subtotal - descuento);
+
+            document.getElementById('carrito-subtotal').innerText = `$${subtotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+            document.getElementById('carrito-total').innerText = `$${total.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+            calcularVuelto();
+        }
+
+        function quitarDelCarrito(index) {
+            carritoPOS.splice(index, 1);
+            renderizarCarrito();
+        }
+
+        function vaciarCarrito() {
+            carritoPOS = [];
+            renderizarCarrito();
+        }
+
+        function calcularVuelto() {
+            let subtotal = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
+            const descuento = parseFloat(document.getElementById('carrito-descuento').value || 0);
+            const total = Math.max(0, subtotal - descuento);
+            const pagaCon = parseFloat(document.getElementById('carrito-pagacon').value || 0);
+            const vuelto = Math.max(0, pagaCon - total);
+
+            document.getElementById('carrito-vuelto').value = `$${vuelto.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+        }
+
+        function finalizarVentaPOS() {
+            if (carritoPOS.length === 0) {
+                alert("El carrito está vacío.");
+                return;
+            }
+
+            const metodoPago = document.getElementById('carrito-metodo').value;
+            const nRecibo = `REC-${1000 + historialVentasCache.length + 1}`;
+            let subtotal = 0;
+
+            carritoPOS.forEach(item => {
+                const totalItem = item.precio * item.cantidad;
+                subtotal += totalItem;
+
+                if (item.es_reparacion) {
+                    const rep = reparacionesCache.find(r => r.id === item.id);
+                    if (rep) {
+                        rep.estado = 'Retirado';
+                        rep.senia = rep.presupuesto;
+                    }
+                } else {
+                    const prod = productosCache.find(p => p.codigo === item.codigo);
+                    if (prod) {
+                        prod.stock = Math.max(0, prod.stock - item.cantidad);
+                    }
+                }
+            });
+
+            const descuento = parseFloat(document.getElementById('carrito-descuento').value || 0);
+            const totalFinal = Math.max(0, subtotal - descuento);
+
+            historialVentasCache.push({
+                n_recibo: nRecibo,
+                fecha: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                detalle: carritoPOS.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
+                metodo_pago: metodoPago,
+                total: totalFinal
+            });
+
+            guardarDatosLocal();
+            const pagaConVenta = parseFloat(document.getElementById('carrito-pagacon').value || 0);
+            mostrarComprobanteVenta(nRecibo, metodoPago, [...carritoPOS], totalFinal, { subtotal, descuento, pagaCon: pagaConVenta });
+            vaciarCarrito();
+            cargarModuloPOS();
+            cargarDashboard();
+        }
+
+        // ===================== FORMATO DE TICKET =====================
+        function escTk(v) {
+            return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function formatearMontoTicket(n) {
+            return '$' + (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function formatearFechaTicket(fecha) {
+            if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+                const [y, m, d] = fecha.split('-');
+                return `${d}/${m}/${y}`;
+            }
+            const f = fecha instanceof Date ? fecha : new Date(fecha);
+            return f.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+        }
+        function encabezadoTicket(titulo) {
+            return `
+                <img class="tk-logo" src="static/logo.png" alt="El Facha Celulares">
+                <p class="tk-nombre">EL FACHA CELULARES</p>
+                <p class="tk-sub">Servicio Técnico & Repuestos</p>
+                <div class="tk-titulo">${titulo}</div>`;
+        }
+        function pieTicket(mensaje) {
+            return `
+                <div class="tk-pie">
+                    <p>${mensaje}</p>
+                    <p class="tk-bold">Av. Alfonsina Storni 136</p>
+                    <p class="tk-bold">Tel: 3816325529 / 3814120916</p>
+                </div>`;
+        }
+        let papelTicket = localStorage.getItem('facha_papel_ticket') === '58' ? '58' : '80';
+        function aplicarPapelTicket() {
+            document.querySelectorAll('.ticket-preview-box').forEach(el => el.classList.toggle('papel-58', papelTicket === '58'));
+            document.querySelectorAll('.selector-papel').forEach(sel => { sel.value = papelTicket; });
+        }
+        function cambiarPapelTicket(valor) {
+            papelTicket = valor === '58' ? '58' : '80';
+            localStorage.setItem('facha_papel_ticket', papelTicket);
+            aplicarPapelTicket();
+        }
+
+        function mostrarComprobanteVenta(nRecibo, metodoPago, items, totalFinal, extra = {}) {
+            const fila = (izq, der, cls = '') => `<div class="tk-fila ${cls}"><span>${izq}</span><span>${der}</span></div>`;
+            const cantArticulos = items.reduce((acc, i) => acc + (Number(i.cantidad) || 0), 0);
+            const subtotal = extra.subtotal ?? items.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+            const descuento = Math.max(0, extra.descuento || 0);
+            const pagaCon = extra.pagaCon || 0;
+
+            const itemsHTML = items.map(item => {
+                const ref = item.es_reparacion ? (item.n_orden || item.codigo || '') : (item.codigo || '');
+                return `
+                <div class="tk-item">
+                    <div class="tk-item-nombre">${escTk(item.nombre)}</div>
+                    <div class="tk-fila">
+                        <span class="tk-item-det">${item.cantidad} x ${formatearMontoTicket(item.precio)}${ref ? ' · ' + escTk(ref) : ''}</span>
+                        <span>${formatearMontoTicket(item.precio * item.cantidad)}</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            let pagoHTML = fila('Forma de pago', escTk(metodoPago));
+            if (pagaCon > 0) {
+                pagoHTML += fila('Paga con', formatearMontoTicket(pagaCon));
+                pagoHTML += fila('Vuelto', formatearMontoTicket(Math.max(0, pagaCon - totalFinal)), 'tk-bold');
+            }
+
+            const ticketHTML = `
+                <div class="tk">
+                    ${encabezadoTicket('COMPROBANTE DE VENTA')}
+                    <hr class="tk-sep">
+                    ${fila(escTk(nRecibo), escTk(formatearFechaTicket(new Date())), 'tk-bold')}
+                    <hr class="tk-sep">
+                    ${itemsHTML}
+                    <hr class="tk-sep">
+                    ${fila('Artículos', cantArticulos)}
+                    ${fila('Subtotal', formatearMontoTicket(subtotal))}
+                    ${descuento > 0 ? fila('Descuento', '-' + formatearMontoTicket(descuento)) : ''}
+                    <hr class="tk-sep-solido">
+                    ${fila('TOTAL', formatearMontoTicket(totalFinal), 'tk-total')}
+                    <hr class="tk-sep-solido">
+                    ${pagoHTML}
+                    <hr class="tk-sep">
+                    ${pieTicket('¡Muchas gracias por su preferencia!')}
+                </div>
+            `;
+
+            document.getElementById('ticket-preview-content').innerHTML = ticketHTML;
+            aplicarPapelTicket();
+
+            if (!modalTicketBS) {
+                modalTicketBS = new bootstrap.Modal(document.getElementById('modalTicketVenta'));
+            }
+            modalTicketBS.show();
+        }
+
+        function cargarBalanceGanancias() {
+            let invTotal = 0;
+            let ingTotal = 0;
+            let ganTotal = 0;
+
+            const tbodyProd = document.getElementById('tabla-balance');
+            tbodyProd.innerHTML = productosCache.map(p => {
+                const inv = p.costo * p.stock;
+                invTotal += inv;
+
+                return `
+                    <tr>
+                        <td><code>${p.codigo}</code></td>
+                        <td><strong>${p.nombre}</strong></td>
+                        <td><span class="badge bg-secondary">${p.stock} un.</span></td>
+                        <td>$${p.costo.toLocaleString('es-AR')}</td>
+                        <td>$${inv.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                        <td class="text-primary fw-semibold">$${p.precio.toLocaleString('es-AR')}</td>
+                        <td class="text-success fw-bold">$${(p.precio - p.costo).toLocaleString('es-AR')}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tbodyRep = document.getElementById('tabla-balance-reparaciones');
+            tbodyRep.innerHTML = reparacionesCache.map(r => {
+                const ingreso = r.estado === 'Retirado' ? r.presupuesto : r.senia;
+                const costoRep = r.costo_repuesto || 0;
+                const ganancia = ingreso - costoRep;
+
+                invTotal += costoRep;
+                ingTotal += ingreso;
+                ganTotal += ganancia;
+
+                return `
+                    <tr>
+                        <td><span class="badge bg-dark">${r.n_orden}</span></td>
+                        <td><strong>${r.equipo}</strong></td>
+                        <td><span class="badge ${r.estado === 'Retirado' ? 'bg-success' : 'bg-warning text-dark'}">${r.estado}</span></td>
+                        <td class="text-primary fw-semibold">$${ingreso.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                        <td class="text-danger">$${costoRep.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                        <td class="text-success fw-bold">$${ganancia.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('bal-total-inversion').innerText = `$${invTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+            document.getElementById('bal-total-vendido').innerText = `$${ingTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+            document.getElementById('bal-total-ganancia').innerText = `$${ganTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+        }
+
+        function cargarInventario() { renderizarTablaInventario(productosCache); }
+
+        function renderizarTablaInventario(lista) {
+            const tbody = document.getElementById('tabla-inventario');
+            if (lista.length > 0) {
+                tbody.innerHTML = lista.map(p => `
+                    <tr>
+                        <td><code>${p.codigo}</code></td>
+                        <td><strong>${p.nombre}</strong></td>
+                        <td><span class="badge bg-secondary">${p.categoria}</span></td>
+                        <td><span class="badge ${p.stock <= 2 ? 'bg-danger' : 'bg-success'}">${p.stock} un.</span></td>
+                        <td>$${p.costo.toLocaleString('es-AR')}</td>
+                        <td><strong>$${p.precio.toLocaleString('es-AR')}</strong></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="eliminarProducto('${p.codigo}')"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No hay productos en inventario.</td></tr>';
+            }
+        }
+
+        function filtrarInventario() {
+            const query = (document.getElementById('input-buscar-inv').value || '').toLowerCase();
+            const filtrados = productosCache.filter(p => p.nombre.toLowerCase().includes(query) || p.codigo.toLowerCase().includes(query));
+            renderizarTablaInventario(filtrados);
+        }
+
+        function eliminarProducto(codigo) {
+            if (confirm(`¿Desea eliminar el producto con código ${codigo}?`)) {
+                productosCache = productosCache.filter(p => p.codigo !== codigo);
+                guardarDatosLocal();
+                cargarInventario();
+            }
+        }
+
+        function obtenerVentasFiltradas() {
+            const desde = document.getElementById('filtro-fecha-desde').value;
+            const hasta = document.getElementById('filtro-fecha-hasta').value;
+            return historialVentasCache.filter(v => {
+                const dia = (v.fecha || '').substring(0, 10);
+                return (!desde || dia >= desde) && (!hasta || dia <= hasta);
+            });
+        }
+
+        function cargarHistorialVentas() {
+            const tbody = document.getElementById('tabla-historial-ventas');
+            const ventas = obtenerVentasFiltradas();
+            document.getElementById('lbl-conteo-ventas').innerText = `Se encontraron ${ventas.length} ventas.`;
+            if (ventas.length > 0) {
+                tbody.innerHTML = ventas.map(v => `
+                    <tr>
+                        <td><span class="badge bg-dark">${v.n_recibo}</span></td>
+                        <td>${v.fecha}</td>
+                        <td>${v.detalle}</td>
+                        <td><span class="badge bg-info text-dark">${v.metodo_pago}</span></td>
+                        <td><strong>$${v.total.toLocaleString('es-AR')}</strong></td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No hay ventas registradas.</td></tr>';
+            }
+        }
+
+        // ===================== EXPORTACIÓN A EXCEL (.xlsx con formato) =====================
+        let excelJSPromise = null;
+        function cargarExcelJS() {
+            if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+            if (!excelJSPromise) {
+                excelJSPromise = new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+                    s.onload = () => resolve(window.ExcelJS);
+                    s.onerror = () => { excelJSPromise = null; reject(new Error('No se pudo cargar ExcelJS')); };
+                    document.head.appendChild(s);
+                });
+            }
+            return excelJSPromise;
+        }
+
+        const XL_COLOR_PRIMARIO = 'FF0F172A';
+        const XL_COLOR_ACENTO = 'FF059669';
+        const XL_COLOR_CEBRA = 'FFF1F5F9';
+        const XL_BORDE = { style: 'thin', color: { argb: 'FFCBD5E1' } };
+        const XL_BORDES = { top: XL_BORDE, left: XL_BORDE, bottom: XL_BORDE, right: XL_BORDE };
+        const XL_MONEDA = '"$" #,##0.00';
+
+        /**
+         * Crea una hoja con encabezado institucional, tabla con bordes, filas alternadas,
+         * filtros, panel inmovilizado y fila de totales.
+         * columnas: [{ titulo, clave, ancho, tipo: 'texto'|'moneda'|'entero'|'fecha', alinear, total: 'suma'|'texto' , textoTotal }]
+         */
+        function construirHojaExcel(wb, { nombreHoja, titulo, subtitulo, columnas, filas, colorFila }) {
+            const ws = wb.addWorksheet(nombreHoja, {
+                pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9,
+                             margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 } },
+                headerFooter: { oddFooter: '&L' + titulo + '&RPágina &P de &N' }
+            });
+            const nCols = columnas.length;
+            ws.columns = columnas.map(c => ({ key: c.clave, width: c.ancho || 15 }));
+
+            // Fila 1: título
+            ws.mergeCells(1, 1, 1, nCols);
+            const cTitulo = ws.getCell(1, 1);
+            cTitulo.value = 'EL FACHA CELULARES — ' + titulo;
+            cTitulo.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+            cTitulo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL_COLOR_PRIMARIO } };
+            cTitulo.alignment = { vertical: 'middle', horizontal: 'center' };
+            ws.getRow(1).height = 30;
+
+            // Fila 2: subtítulo
+            ws.mergeCells(2, 1, 2, nCols);
+            const cSub = ws.getCell(2, 1);
+            cSub.value = subtitulo;
+            cSub.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF475569' } };
+            cSub.alignment = { vertical: 'middle', horizontal: 'center' };
+            ws.getRow(2).height = 18;
+
+            // Fila 3: dirección / contacto
+            ws.mergeCells(3, 1, 3, nCols);
+            const cDir = ws.getCell(3, 1);
+            cDir.value = 'Dirección: Av. Alfonsina Storni 136  |  Contacto: 3816325529 / 3814120916';
+            cDir.font = { name: 'Calibri', size: 9, color: { argb: 'FF64748B' } };
+            cDir.alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // Fila 5: encabezados
+            const FILA_ENC = 5;
+            const filaEnc = ws.getRow(FILA_ENC);
+            columnas.forEach((c, i) => {
+                const cell = filaEnc.getCell(i + 1);
+                cell.value = c.titulo;
+                cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL_COLOR_ACENTO } };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = XL_BORDES;
+            });
+            filaEnc.height = 24;
+
+            // Datos
+            filas.forEach((datos, idx) => {
+                const row = ws.getRow(FILA_ENC + 1 + idx);
+                const colorEspecial = colorFila ? colorFila(datos) : null;
+                columnas.forEach((c, i) => {
+                    const cell = row.getCell(i + 1);
+                    cell.value = datos[c.clave];
+                    cell.font = { name: 'Calibri', size: 11, color: { argb: (colorEspecial && colorEspecial.font) || 'FF1E293B' } };
+                    cell.border = XL_BORDES;
+                    const fondo = (colorEspecial && colorEspecial.fill) || (idx % 2 === 1 ? XL_COLOR_CEBRA : null);
+                    if (fondo) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fondo } };
+                    if (c.tipo === 'moneda') cell.numFmt = XL_MONEDA;
+                    if (c.tipo === 'entero') cell.numFmt = '#,##0';
+                    if (c.tipo === 'fecha') cell.numFmt = 'dd/mm/yyyy hh:mm';
+                    cell.alignment = {
+                        vertical: 'middle',
+                        horizontal: c.alinear || (c.tipo === 'moneda' || c.tipo === 'entero' ? 'right' : (c.tipo === 'fecha' ? 'center' : 'left')),
+                        wrapText: !!c.ajustar
+                    };
+                });
+            });
+
+            const filaFinDatos = FILA_ENC + filas.length;
+
+            // Fila de totales
+            if (filas.length > 0 && columnas.some(c => c.total)) {
+                const rowTot = ws.getRow(filaFinDatos + 1);
+                columnas.forEach((c, i) => {
+                    const cell = rowTot.getCell(i + 1);
+                    const letra = ws.getColumn(i + 1).letter;
+                    if (c.total === 'suma') {
+                        const resultado = filas.reduce((s, f) => s + (Number(f[c.clave]) || 0), 0);
+                        cell.value = { formula: `SUBTOTAL(9,${letra}${FILA_ENC + 1}:${letra}${filaFinDatos})`, result: resultado };
+                        cell.numFmt = c.tipo === 'moneda' ? XL_MONEDA : '#,##0';
+                        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                    } else if (c.total === 'texto') {
+                        cell.value = c.textoTotal || 'TOTAL';
+                        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                    }
+                    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL_COLOR_PRIMARIO } };
+                    cell.border = XL_BORDES;
+                });
+                rowTot.height = 22;
+            } else if (filas.length === 0) {
+                ws.mergeCells(FILA_ENC + 1, 1, FILA_ENC + 1, nCols);
+                const c = ws.getCell(FILA_ENC + 1, 1);
+                c.value = 'No hay registros para mostrar.';
+                c.font = { italic: true, color: { argb: 'FF64748B' } };
+                c.alignment = { horizontal: 'center' };
+                c.border = XL_BORDES;
+            }
+
+            // Filtros, panel inmovilizado y área de impresión
+            const ultimaLetra = ws.getColumn(nCols).letter;
+            if (filas.length > 0) ws.autoFilter = `A${FILA_ENC}:${ultimaLetra}${filaFinDatos}`;
+            ws.views = [{ state: 'frozen', ySplit: FILA_ENC, showGridLines: false }];
+            ws.pageSetup.printTitlesRow = `${FILA_ENC}:${FILA_ENC}`;
+            return ws;
+        }
+
+        async function descargarLibroExcel(wb, nombreArchivo) {
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nombreArchivo;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+
+        function nuevoLibroExcel() {
+            const wb = new ExcelJS.Workbook();
+            wb.creator = 'El Facha Celulares';
+            wb.created = new Date();
+            return wb;
+        }
+
+        function fechaHoyArchivo() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function parsearFechaVenta(str) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(str || '');
+            if (!m) return str || '';
+            // Las ventas se registran en hora UTC: se convierte a la hora local del negocio
+            const local = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)));
+            // ExcelJS escribe las fechas en UTC, así que se pasan los componentes locales como UTC
+            return new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate(), local.getHours(), local.getMinutes(), local.getSeconds()));
+        }
+
+        async function exportarConExcel(fn, btnSelector) {
+            const btn = btnSelector ? document.querySelector(btnSelector) : null;
+            const htmlOriginal = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generando...'; }
+            try {
+                await cargarExcelJS();
+                await fn();
+            } catch (e) {
+                alert('No se pudo generar el archivo de Excel. Revise su conexión a internet e intente nuevamente.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = htmlOriginal; }
+            }
+        }
+
+        function exportarExcelVentas() {
+            exportarConExcel(async () => {
+                const ventas = obtenerVentasFiltradas();
+                const desde = document.getElementById('filtro-fecha-desde').value;
+                const hasta = document.getElementById('filtro-fecha-hasta').value;
+                const fmt = f => f.split('-').reverse().join('/');
+                const periodo = (desde || hasta)
+                    ? `Período: ${desde ? fmt(desde) : 'inicio'} al ${hasta ? fmt(hasta) : 'hoy'}`
+                    : 'Período: todas las ventas';
+
+                const wb = nuevoLibroExcel();
+                construirHojaExcel(wb, {
+                    nombreHoja: 'Ventas',
+                    titulo: 'HISTORIAL DE VENTAS',
+                    subtitulo: `${periodo}  |  Generado el ${new Date().toLocaleString('es-AR')}  |  ${ventas.length} ventas`,
+                    columnas: [
+                        { titulo: 'N° RECIBO', clave: 'n_recibo', ancho: 18, alinear: 'center', total: 'texto', textoTotal: 'TOTAL' },
+                        { titulo: 'FECHA Y HORA', clave: 'fecha', ancho: 20, tipo: 'fecha' },
+                        { titulo: 'DETALLE DE PRODUCTOS / SERVICIOS', clave: 'detalle', ancho: 60, ajustar: true },
+                        { titulo: 'MÉTODO DE PAGO', clave: 'metodo_pago', ancho: 18, alinear: 'center' },
+                        { titulo: 'MONTO TOTAL', clave: 'total', ancho: 18, tipo: 'moneda', total: 'suma' }
+                    ],
+                    filas: ventas.map(v => ({
+                        n_recibo: v.n_recibo,
+                        fecha: parsearFechaVenta(v.fecha),
+                        detalle: (v.detalle || '').split(', ').join('\n'),
+                        metodo_pago: v.metodo_pago,
+                        total: Number(v.total) || 0
+                    }))
+                });
+
+                // Resumen por método de pago
+                const porMetodo = {};
+                ventas.forEach(v => {
+                    const k = v.metodo_pago || 'Sin especificar';
+                    porMetodo[k] = porMetodo[k] || { metodo: k, cantidad: 0, total: 0 };
+                    porMetodo[k].cantidad += 1;
+                    porMetodo[k].total += Number(v.total) || 0;
+                });
+                construirHojaExcel(wb, {
+                    nombreHoja: 'Resumen por pago',
+                    titulo: 'RESUMEN POR MÉTODO DE PAGO',
+                    subtitulo: `${periodo}  |  Generado el ${new Date().toLocaleString('es-AR')}`,
+                    columnas: [
+                        { titulo: 'MÉTODO DE PAGO', clave: 'metodo', ancho: 28, total: 'texto', textoTotal: 'TOTAL' },
+                        { titulo: 'CANTIDAD DE VENTAS', clave: 'cantidad', ancho: 22, tipo: 'entero', total: 'suma' },
+                        { titulo: 'MONTO TOTAL', clave: 'total', ancho: 22, tipo: 'moneda', total: 'suma' }
+                    ],
+                    filas: Object.values(porMetodo).sort((a, b) => b.total - a.total)
+                });
+
+                await descargarLibroExcel(wb, `ventas_facha_${fechaHoyArchivo()}.xlsx`);
+            }, 'button[onclick="exportarExcelVentas()"]');
+        }
+
+        function exportarExcelInventario() {
+            exportarConExcel(async () => {
+                const lista = [...productosCache].sort((a, b) =>
+                    (a.categoria || '').localeCompare(b.categoria || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+                const wb = nuevoLibroExcel();
+                construirHojaExcel(wb, {
+                    nombreHoja: 'Inventario',
+                    titulo: 'INVENTARIO Y PRECIOS',
+                    subtitulo: `Generado el ${new Date().toLocaleString('es-AR')}  |  ${lista.length} productos  |  En rojo: stock crítico (2 un. o menos)`,
+                    columnas: [
+                        { titulo: 'CÓDIGO', clave: 'codigo', ancho: 16, alinear: 'center', total: 'texto', textoTotal: 'TOTALES' },
+                        { titulo: 'PRODUCTO / REPUESTO', clave: 'nombre', ancho: 42, ajustar: true },
+                        { titulo: 'CATEGORÍA', clave: 'categoria', ancho: 18, alinear: 'center' },
+                        { titulo: 'STOCK', clave: 'stock', ancho: 10, tipo: 'entero', total: 'suma' },
+                        { titulo: 'COSTO UNIT.', clave: 'costo', ancho: 15, tipo: 'moneda' },
+                        { titulo: 'PRECIO VENTA', clave: 'precio', ancho: 15, tipo: 'moneda' },
+                        { titulo: 'GANANCIA UNIT.', clave: 'ganancia', ancho: 16, tipo: 'moneda' },
+                        { titulo: 'VALOR EN STOCK (COSTO)', clave: 'valorCosto', ancho: 20, tipo: 'moneda', total: 'suma' },
+                        { titulo: 'VALOR EN STOCK (VENTA)', clave: 'valorVenta', ancho: 20, tipo: 'moneda', total: 'suma' }
+                    ],
+                    filas: lista.map(p => {
+                        const stock = Number(p.stock) || 0, costo = Number(p.costo) || 0, precio = Number(p.precio) || 0;
+                        return {
+                            codigo: String(p.codigo), nombre: p.nombre, categoria: p.categoria,
+                            stock, costo, precio,
+                            ganancia: precio - costo,
+                            valorCosto: costo * stock,
+                            valorVenta: precio * stock
+                        };
+                    }),
+                    colorFila: f => f.stock <= 2 ? { fill: 'FFFEE2E2', font: 'FF991B1B' } : null
+                });
+                await descargarLibroExcel(wb, `inventario_facha_${fechaHoyArchivo()}.xlsx`);
+            }, 'button[onclick="exportarExcelInventario()"]');
+        }
+
+        // ===================== ESCÁNER: INGRESO / EGRESO =====================
+        let escanerCamara = null;
+        let camaraActiva = false;
+
+        function abrirEscanerModo(modo) {
+            const link = document.querySelector('#sidebar .nav-link[onclick*="escaner"]');
+            cambiarSeccion('escaner', link);
+            setModoEscaner(modo);
+        }
+
+        function setModoEscaner(modo) {
+            window.modoActualEscaner = modo;
+            const tabIng = document.getElementById('tab-ingreso');
+            const tabEgr = document.getElementById('tab-egreso');
+            const badge = document.getElementById('badge-modo');
+            const titulo = document.getElementById('titulo-modo');
+            if (modo === 'VENTA') {
+                tabIng.className = 'btn btn-outline-success btn-lg fw-bold flex-fill';
+                tabEgr.className = 'btn btn-danger btn-lg fw-bold flex-fill text-white';
+                badge.className = 'badge bg-danger mb-2 px-3 py-2 fs-6 text-white';
+                badge.innerText = 'MÓDULO DE EGRESO / VENTA';
+                titulo.innerText = 'Venta o Salida de Stock con Código de Barras';
+            } else {
+                tabIng.className = 'btn btn-success btn-lg fw-bold flex-fill text-white';
+                tabEgr.className = 'btn btn-outline-danger btn-lg fw-bold flex-fill';
+                badge.className = 'badge bg-success mb-2 px-3 py-2 fs-6 text-white';
+                badge.innerText = 'MÓDULO DE INGRESO RÁPIDO';
+                titulo.innerText = 'Carga Directa de Stock con Código de Barras';
+            }
+            // Si ya hay un producto escaneado, refrescar los datos para el nuevo modo
+            const codigoActual = document.getElementById('scan-codigo').value;
+            if (codigoActual) procesarCodigoEscaner(codigoActual);
+            const input = document.getElementById('input-pistola');
+            if (input) input.focus();
+        }
+
+        function detectarEnterPistola(e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const codigo = e.target.value.trim();
+            if (!codigo) return;
+            e.target.value = '';
+            procesarCodigoEscaner(codigo);
+        }
+
+        function procesarCodigoEscaner(codigo) {
+            codigo = String(codigo).trim();
+            const prod = productosCache.find(p => String(p.codigo) === codigo);
+            const esVenta = window.modoActualEscaner === 'VENTA';
+
+            if (esVenta && !prod) {
+                alert(`No existe ningún producto con el código ${codigo} en el inventario.`);
+                document.getElementById('card-detalles-escaner').style.display = 'none';
+                document.getElementById('scan-codigo').value = '';
+                return;
+            }
+
+            document.getElementById('scan-codigo').value = codigo;
+            document.getElementById('scan-nombre').value = prod ? prod.nombre : '';
+            document.getElementById('scan-categoria').value = prod ? prod.categoria : 'Accesorios';
+            document.getElementById('scan-costo').value = prod ? prod.costo : 0;
+            document.getElementById('scan-precio').value = prod ? prod.precio : 0;
+            document.getElementById('scan-cantidad').value = 1;
+
+            ['scan-nombre', 'scan-categoria', 'scan-costo'].forEach(id => {
+                document.getElementById(id).readOnly = esVenta;
+            });
+
+            document.getElementById('card-detalles-escaner').style.display = 'block';
+            document.getElementById(prod ? 'scan-cantidad' : 'scan-nombre').focus();
+        }
+
+        function confirmarOperacionEscaner() {
+            const codigo = document.getElementById('scan-codigo').value.trim();
+            const nombre = document.getElementById('scan-nombre').value.trim();
+            const categoria = document.getElementById('scan-categoria').value.trim() || 'Accesorios';
+            const costo = parseFloat(document.getElementById('scan-costo').value || 0);
+            const precio = parseFloat(document.getElementById('scan-precio').value || 0);
+            const cantidad = parseInt(document.getElementById('scan-cantidad').value || 0, 10);
+
+            if (!codigo) { alert('Primero escanee o ingrese un código.'); return; }
+            if (!cantidad || cantidad < 1) { alert('Ingrese una cantidad válida.'); return; }
+
+            let prod = productosCache.find(p => String(p.codigo) === codigo);
+
+            if (window.modoActualEscaner === 'VENTA') {
+                if (!prod) { alert('El producto no existe en el inventario.'); return; }
+                if (prod.stock < cantidad) { alert(`Stock insuficiente. Disponible: ${prod.stock} un.`); return; }
+                prod.stock -= cantidad;
+                const nRecibo = `REC-${1000 + historialVentasCache.length + 1}`;
+                const total = precio * cantidad;
+                historialVentasCache.push({
+                    n_recibo: nRecibo,
+                    fecha: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                    detalle: `${cantidad}x ${prod.nombre}`,
+                    metodo_pago: 'Efectivo',
+                    total: total
+                });
+                guardarDatosLocal();
+                mostrarComprobanteVenta(nRecibo, 'Efectivo', [{ nombre: prod.nombre, precio: precio, cantidad: cantidad }], total);
+            } else {
+                if (!nombre) { alert('Ingrese el nombre del producto.'); return; }
+                if (prod) {
+                    prod.nombre = nombre;
+                    prod.categoria = categoria;
+                    prod.costo = costo;
+                    prod.precio = precio;
+                    prod.stock = (prod.stock || 0) + cantidad;
+                } else {
+                    prod = { codigo, nombre, categoria, costo, precio, stock: cantidad };
+                    productosCache.push(prod);
+                }
+                guardarDatosLocal();
+                alert(`Stock actualizado: ${prod.nombre} ahora tiene ${prod.stock} un.`);
+            }
+
+            document.getElementById('card-detalles-escaner').style.display = 'none';
+            document.getElementById('scan-codigo').value = '';
+            cargarDashboard();
+            const input = document.getElementById('input-pistola');
+            if (input) input.focus();
+        }
+
+        // ===================== CÁMARA (html5-qrcode) =====================
+        async function toggleCamara() {
+            if (camaraActiva) { await detenerCamara(); return; }
+
+            if (typeof Html5Qrcode === 'undefined') {
+                alert('No se pudo cargar el lector de códigos. Revise su conexión a internet y recargue la página.');
+                return;
+            }
+            if (!window.isSecureContext || !navigator.mediaDevices) {
+                alert('La cámara solo funciona en una conexión segura (https).');
+                return;
+            }
+
+            const wrapper = document.getElementById('wrapper-camara');
+            const btn = document.getElementById('btn-camara-toggle');
+            wrapper.style.display = 'block';
+
+            try {
+                const formatos = typeof Html5QrcodeSupportedFormats !== 'undefined' ? [
+                    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.ITF,
+                    Html5QrcodeSupportedFormats.CODABAR, Html5QrcodeSupportedFormats.QR_CODE
+                ] : undefined;
+                escanerCamara = new Html5Qrcode('reader', formatos ? { formatsToSupport: formatos, verbose: false } : undefined);
+                await escanerCamara.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 250, height: 120 } },
+                    async (texto) => {
+                        if (navigator.vibrate) navigator.vibrate(100);
+                        await detenerCamara();
+                        procesarCodigoEscaner(texto);
+                    },
+                    () => {}
+                );
+                camaraActiva = true;
+                btn.innerHTML = '<i class="bi bi-camera-video-off"></i> Detener Cámara';
+            } catch (err) {
+                wrapper.style.display = 'none';
+                escanerCamara = null;
+                camaraActiva = false;
+                const msg = String(err && (err.name || err.message || err));
+                if (/NotAllowed|Permission/i.test(msg)) {
+                    alert('Permiso de cámara denegado. Habilite el acceso a la cámara en la configuración del navegador.');
+                } else if (/NotFound|Requested device not found/i.test(msg)) {
+                    alert('No se encontró ninguna cámara en este dispositivo.');
+                } else {
+                    alert('No se pudo iniciar la cámara. Verifique que no esté siendo usada por otra aplicación.');
+                }
+            }
+        }
+
+        async function detenerCamara() {
+            if (escanerCamara) {
+                try { if (camaraActiva) await escanerCamara.stop(); } catch (e) {}
+                try { escanerCamara.clear(); } catch (e) {}
+            }
+            escanerCamara = null;
+            camaraActiva = false;
+            const wrapper = document.getElementById('wrapper-camara');
+            const btn = document.getElementById('btn-camara-toggle');
+            if (wrapper) wrapper.style.display = 'none';
+            if (btn) btn.innerHTML = '<i class="bi bi-camera"></i> Escanear con la Cámara';
+        }
+
+        // ===================== CÁMARA EN PUNTO DE VENTA (búsqueda) =====================
+        let escanerCamaraPOS = null;
+        let camaraPOSActiva = false;
+
+        async function toggleCamaraPOS() {
+            if (camaraPOSActiva) { await detenerCamaraPOS(); return; }
+
+            if (typeof Html5Qrcode === 'undefined') {
+                alert('No se pudo cargar el lector de códigos. Revise su conexión a internet y recargue la página.');
+                return;
+            }
+            if (!window.isSecureContext || !navigator.mediaDevices) {
+                alert('La cámara solo funciona en una conexión segura (https).');
+                return;
+            }
+
+            const wrapper = document.getElementById('wrapper-camara-pos');
+            const btn = document.getElementById('btn-camara-pos');
+            wrapper.style.display = 'block';
+
+            try {
+                const formatos = typeof Html5QrcodeSupportedFormats !== 'undefined' ? [
+                    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.ITF,
+                    Html5QrcodeSupportedFormats.CODABAR, Html5QrcodeSupportedFormats.QR_CODE
+                ] : undefined;
+                escanerCamaraPOS = new Html5Qrcode('reader-pos', formatos ? { formatsToSupport: formatos, verbose: false } : undefined);
+                await escanerCamaraPOS.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 250, height: 120 } },
+                    async (texto) => {
+                        if (navigator.vibrate) navigator.vibrate(100);
+                        await detenerCamaraPOS();
+                        buscarCodigoEscaneadoPOS(texto);
+                    },
+                    () => {}
+                );
+                camaraPOSActiva = true;
+                btn.innerHTML = '<i class="bi bi-camera-video-off"></i> <span class="d-none d-sm-inline">Detener</span>';
+            } catch (err) {
+                wrapper.style.display = 'none';
+                escanerCamaraPOS = null;
+                camaraPOSActiva = false;
+                const msg = String(err && (err.name || err.message || err));
+                if (/NotAllowed|Permission/i.test(msg)) {
+                    alert('Permiso de cámara denegado. Habilite el acceso a la cámara en la configuración del navegador.');
+                } else if (/NotFound|Requested device not found/i.test(msg)) {
+                    alert('No se encontró ninguna cámara en este dispositivo.');
+                } else {
+                    alert('No se pudo iniciar la cámara. Verifique que no esté siendo usada por otra aplicación.');
+                }
+            }
+        }
+
+        async function detenerCamaraPOS() {
+            if (escanerCamaraPOS) {
+                try { if (camaraPOSActiva) await escanerCamaraPOS.stop(); } catch (e) {}
+                try { escanerCamaraPOS.clear(); } catch (e) {}
+            }
+            escanerCamaraPOS = null;
+            camaraPOSActiva = false;
+            const wrapper = document.getElementById('wrapper-camara-pos');
+            const btn = document.getElementById('btn-camara-pos');
+            if (wrapper) wrapper.style.display = 'none';
+            if (btn) btn.innerHTML = '<i class="bi bi-camera"></i> <span class="d-none d-sm-inline">Escanear</span>';
+        }
+
+        function buscarCodigoEscaneadoPOS(texto) {
+            const codigo = String(texto || '').trim();
+            if (!codigo) return;
+            const input = document.getElementById('input-pos-nombre');
+            input.value = codigo;
+            renderizarCatalogoPOS();
+            const contenedor = document.getElementById('catalogo-pos');
+            if (contenedor) contenedor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // ===================== IMPRESIÓN DE TICKETS =====================
+        function imprimirContenidoTicket(contenedorId, titulo) {
+            const contenido = document.getElementById(contenedorId);
+            if (!contenido || !contenido.innerHTML.trim()) { alert('No hay ningún ticket para imprimir.'); return; }
+
+            const logoUrl = new URL('static/logo_facha.png', window.location.href).href;
+            const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${titulo}</title>
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+                <style>
+                    @page { size: ${papelTicket === '58' ? '58mm' : '80mm'} auto; margin: 3mm; }
+                    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    body { background: #fff; font-family: monospace; margin: 0; }
+                    .ticket { position: relative; max-width: ${papelTicket === '58' ? '54mm' : '72mm'}; margin: 0 auto; padding: 4px; overflow: hidden; }
+                    ${document.getElementById('ticket-styles').textContent}
+                    .ticket .marca-agua { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                        width: 85%; max-width: 240px; opacity: 0.12; pointer-events: none; z-index: 0; }
+                    .ticket .contenido { position: relative; z-index: 1; }
+                </style></head><body>
+                <div class="ticket${papelTicket === '58' ? ' papel-58' : ''}"><img class="marca-agua" src="${logoUrl}" alt=""><div class="contenido">${contenido.innerHTML}</div></div>
+                </body></html>`;
+
+            const anterior = document.getElementById('iframe-impresion');
+            if (anterior) anterior.remove();
+            const iframe = document.createElement('iframe');
+            iframe.id = 'iframe-impresion';
+            iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+
+            let impreso = false;
+            const imprimir = () => {
+                if (impreso) return;
+                impreso = true;
+                try {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                } catch (e) {
+                    window.print();
+                }
+            };
+            iframe.onload = () => setTimeout(imprimir, 150);
+            setTimeout(imprimir, 1500); // respaldo si los estilos tardan en cargar
+        }
+
+        function imprimirTicketVenta() { imprimirContenidoTicket('ticket-preview-content', 'Ticket de Venta - El Facha Celulares'); }
+        function imprimirComprobanteSTModal() { imprimirContenidoTicket('comprobante-st-content', 'Comprobante Servicio Técnico - El Facha Celulares'); }
+
+        // ===================== BÚSQUEDAS Y FILTROS =====================
+        function detectarCodigoPOS(e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const codigo = e.target.value.trim();
+            if (!codigo) return;
+            const prod = productosCache.find(p => String(p.codigo) === codigo);
+            if (!prod) { alert(`No existe ningún producto con el código ${codigo}.`); return; }
+            e.target.value = '';
+            agregarProductoAlCarrito(prod);
+        }
+
+        function filtrarCatalogoPOS() { renderizarCatalogoPOS(); }
+
+        function filtrarTablaST() {
+            const query = (document.getElementById('input-buscar-st').value || '').toLowerCase().trim();
+            const estado = document.getElementById('select-filtro-estado').value;
+            const filtradas = reparacionesCache.filter(r => {
+                const coincideTexto = !query || [r.n_orden, r.cliente, r.equipo, r.falla, r.telefono]
+                    .some(v => (v || '').toString().toLowerCase().includes(query));
+                const coincideEstado = estado === 'TODOS' || r.estado === estado;
+                return coincideTexto && coincideEstado;
+            });
+            renderizarTablaST(filtradas);
+        }
+
+        function limpiarFiltroFechas() {
+            document.getElementById('filtro-fecha-desde').value = '';
+            document.getElementById('filtro-fecha-hasta').value = '';
+            cargarHistorialVentas();
+        }
+
+        window.onload = function() {
+            initLocalDatabase();
+            cargarDashboard();
+        };
+    </script>
+</body>
+</html>

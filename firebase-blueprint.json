@@ -1,0 +1,254 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user profile root document owning store collections",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "photoURL": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "photoURL", "createdAt", "updatedAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory product or spare part item owned by a user",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "codigo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "nombre": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "categoria": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "costo": {
+          "type": "number"
+        },
+        "precio": {
+          "type": "number"
+        },
+        "stock": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "codigo", "nombre", "categoria", "costo", "precio", "stock", "createdAt", "updatedAt"]
+    },
+    "RepairOrder": {
+      "title": "RepairOrder",
+      "description": "Technical service repair order owned by a user",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "id": {
+          "type": "number"
+        },
+        "n_orden": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "cliente": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "telefono": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 50
+        },
+        "equipo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "falla": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "estado": {
+          "type": "string",
+          "enum": ["En Reparación", "Listo para Entregar", "Retirado"]
+        },
+        "presupuesto": {
+          "type": "number"
+        },
+        "senia": {
+          "type": "number"
+        },
+        "costo_repuesto": {
+          "type": "number"
+        },
+        "fecha": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "id",
+        "n_orden",
+        "cliente",
+        "telefono",
+        "equipo",
+        "falla",
+        "estado",
+        "presupuesto",
+        "senia",
+        "costo_repuesto",
+        "fecha",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SaleRecord": {
+      "title": "SaleRecord",
+      "description": "POS or scanner sale receipt owned by a user",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "n_recibo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "fecha": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "detalle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "metodo_pago": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "total": {
+          "type": "number"
+        },
+        "descuento": {
+          "type": "number"
+        },
+        "paga_con": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "n_recibo",
+        "fecha",
+        "detalle",
+        "metodo_pago",
+        "total",
+        "descuento",
+        "paga_con",
+        "items",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile root document"
+    },
+    "/users/{uid}/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "User-scoped inventory products and spare parts"
+    },
+    "/users/{uid}/repairs/{repairId}": {
+      "schema": { "$ref": "#/entities/RepairOrder" },
+      "description": "User-scoped technical service repair orders"
+    },
+    "/users/{uid}/sales/{saleId}": {
+      "schema": { "$ref": "#/entities/SaleRecord" },
+      "description": "User-scoped sales receipts and transaction history"
+    }
+  }
+}

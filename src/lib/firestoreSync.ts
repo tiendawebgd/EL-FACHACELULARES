@@ -360,10 +360,13 @@ export async function syncStateToFirestore(
       const snap = await getDoc(userRef);
       cache.userRootExists = snap.exists();
     }
+    const resolvedEmail = user.email ?? user.providerData?.[0]?.email ?? '';
+    const resolvedName = user.displayName ?? user.providerData?.[0]?.displayName ?? '';
+    const resolvedPhoto = user.photoURL ?? user.providerData?.[0]?.photoURL ?? '';
     const profilePayload = {
-      email: clampString(user.email ?? '', 254),
-      displayName: clampString(user.displayName ?? '', 120),
-      photoURL: clampString(user.photoURL ?? '', 1024),
+      email: clampString(resolvedEmail, 254),
+      displayName: clampString(resolvedName, 120),
+      photoURL: clampString(resolvedPhoto, 1024),
     };
     if (!cache.userRootExists) {
       ops.push({

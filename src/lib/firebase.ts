@@ -9,6 +9,8 @@ export const auth = getAuth(app);
 
 // Basic Google Sign-In only (no Google Drive or sensitive Workspace scopes)
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });

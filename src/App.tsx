@@ -183,11 +183,12 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setFirebaseUser(user);
+        const resolvedEmail = user.email || user.providerData?.[0]?.email || '';
         const remembered: RememberedGoogleUser = {
           uid: user.uid,
-          displayName: user.displayName || user.email || 'Usuario',
-          email: user.email || '',
-          photoURL: user.photoURL || '',
+          displayName: user.displayName || user.providerData?.[0]?.displayName || resolvedEmail || 'Usuario',
+          email: resolvedEmail,
+          photoURL: user.photoURL || user.providerData?.[0]?.photoURL || '',
         };
         setRememberedGoogleUser(remembered);
         setRememberedUser(remembered);

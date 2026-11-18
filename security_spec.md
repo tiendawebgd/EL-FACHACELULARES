@@ -1,8 +1,8 @@
 # Security Specification — EL FACHA CELULARES
 
 ## 1. Data Invariants
-1. **Strict Ownership Isolation**: Every document in `/users/{uid}` and its subcollections (`products`, `repairs`, `sales`) belongs strictly to `uid == request.auth.uid`, and requires a verified email (`request.auth.token.email_verified == true`).
-2. **Parent Existence (Master Gate)**: Subcollection documents (`products`, `repairs`, `sales`) can only be created or updated if the parent `/users/{uid}` document exists (or is created atomically in the same batch via `existsAfter`).
+1. **Strict Ownership Isolation**: Every document in `/users/{uid}` and its subcollections (`products`, `repairs`, `sales`) belongs strictly to `uid == request.auth.uid`, and requires a verified non-anonymous user (`request.auth.token.email_verified == true` or federated `'google.com'` sign-in provider).
+2. **Parent Existence (Master Gate) & Safe Non-Existent Reads**: Subcollection documents (`products`, `repairs`, `sales`) can only be created or updated if the parent `/users/{uid}` document exists (or is created atomically in the same batch via `existsAfter`). Single-document `allow get` checks safely allow checking non-existent owner docs (`resource == null`) while enforcing `resource.data.uid == request.auth.uid` when present.
 3. **Immutable Identity & Creation Timestamps**: `uid` and `createdAt` cannot be modified after creation. `createdAt` must equal `request.time` on create; `updatedAt` must equal `request.time` on create and update.
 4. **Strict Key & Size Enforcement**: No ghost/shadow fields allowed (`hasAll` + `hasOnly` on create, `affectedKeys().hasOnly(...)` on update). Every string and list enforces explicit upper bounds.
 5. **Path ID Hardening**: All path variables (`uid`, `productId`, `repairId`, `saleId`) must match `^[a-zA-Z0-9_-]+$` and be <= 128 chars.
@@ -10,7 +10,7 @@
 
 ## 2. "Dirty Dozen" Adversarial Payloads (Must All Be Denied)
 1. **Unauthenticated Read**: `GET /users/userA/products/p1` with `auth == null` -> `PERMISSION_DENIED`.
-2. **Unverified Email Write**: `CREATE /users/userA` with `auth.uid == 'userA'`, `email_verified: false` -> `PERMISSION_DENIED`.
+2. **Unverified / Anonymous Write**: `CREATE /users/userA` with `auth.uid == 'userA'`, `email_verified: false` (password/anonymous provider) -> `PERMISSION_DENIED`.
 3. **Cross-Tenant Read**: `GET /users/userA/sales/s1` authenticated as `userB` -> `PERMISSION_DENIED`.
 4. **Cross-Tenant List**: `LIST /users/userA/products` authenticated as `userB` -> `PERMISSION_DENIED`.
 5. **Identity Spoofing on Create**: `CREATE /users/userA/products/p1` as `userA` with `uid: 'userB'` -> `PERMISSION_DENIED`.

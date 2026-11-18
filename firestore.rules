@@ -25,7 +25,10 @@ service cloud.firestore {
     }
 
     function isVerifiedUser() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (
+        request.auth.token.email_verified == true
+        || ('firebase' in request.auth.token && request.auth.token.firebase.sign_in_provider == 'google.com')
+      );
     }
 
     function isOwner(uid) {
@@ -161,7 +164,7 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow get: if isValidId(uid) && isOwner(uid) && existing().uid == request.auth.uid;
+      allow get: if isValidId(uid) && isOwner(uid) && (resource == null || existing().uid == request.auth.uid);
       allow list: if false;
       allow create: if isValidId(uid)
         && isOwner(uid)
@@ -178,7 +181,7 @@ service cloud.firestore {
       allow delete: if isValidId(uid) && isOwner(uid);
 
       match /products/{productId} {
-        allow get: if isValidId(uid) && isValidId(productId) && isOwner(uid) && existing().uid == request.auth.uid;
+        allow get: if isValidId(uid) && isValidId(productId) && isOwner(uid) && (resource == null || existing().uid == request.auth.uid);
         allow list: if isOwner(uid) && existing().uid == request.auth.uid;
         allow create: if isValidId(uid)
           && isValidId(productId)
@@ -203,7 +206,7 @@ service cloud.firestore {
       }
 
       match /repairs/{repairId} {
-        allow get: if isValidId(uid) && isValidId(repairId) && isOwner(uid) && existing().uid == request.auth.uid;
+        allow get: if isValidId(uid) && isValidId(repairId) && isOwner(uid) && (resource == null || existing().uid == request.auth.uid);
         allow list: if isOwner(uid) && existing().uid == request.auth.uid;
         allow create: if isValidId(uid)
           && isValidId(repairId)
@@ -231,7 +234,7 @@ service cloud.firestore {
       }
 
       match /sales/{saleId} {
-        allow get: if isValidId(uid) && isValidId(saleId) && isOwner(uid) && existing().uid == request.auth.uid;
+        allow get: if isValidId(uid) && isValidId(saleId) && isOwner(uid) && (resource == null || existing().uid == request.auth.uid);
         allow list: if isOwner(uid) && existing().uid == request.auth.uid;
         allow create: if isValidId(uid)
           && isValidId(saleId)

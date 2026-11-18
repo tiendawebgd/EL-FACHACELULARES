@@ -37,6 +37,8 @@ import {
   type CloudSnapshotCache,
 } from './lib/firestoreSync';
 import {
+  clearLocalMirror,
+  clearLocalSessionData,
   getRememberedGoogleUser,
   getSavedAuthMode,
   loadGuestStateFromServer,
@@ -131,6 +133,8 @@ export default function App() {
   const cloudCacheRef = useRef<CloudSnapshotCache>(createEmptyCloudCache());
   const unsubFirestoreRef = useRef<(() => void) | null>(null);
   const guestPromptSignInRef = useRef(false);
+  const activeUidRef = useRef<string | null>(null);
+  const signingOutRef = useRef(false);
   const stateRef = useRef<AppStateData>({ productos: [], reparaciones: [], historial: [] });
   stateRef.current = { productos, reparaciones, historial };
 
@@ -182,6 +186,15 @@ export default function App() {
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        if (activeUidRef.current && activeUidRef.current !== user.uid) {
+          detachCloudListeners();
+          clearLocalMirror();
+          stateRef.current = { productos: [], reparaciones: [], historial: [] };
+          setProductos([]);
+          setReparaciones([]);
+          setHistorial([]);
+        }
+        activeUidRef.current = user.uid;
         setFirebaseUser(user);
         const resolvedEmail = user.email || user.providerData?.[0]?.email || '';
         const remembered: RememberedGoogleUser = {
@@ -237,6 +250,9 @@ export default function App() {
           setAuthError(null);
         } catch (err) {
           setAuthError(err instanceof Error ? err.message : 'No se pudo cargar la nube.');
+          if (authModeRef.current === 'pending') {
+            setWelcomeOpen(true);
+          }
         } finally {
           setAuthLoading(false);
           guestPromptSignInRef.current = false;
@@ -245,11 +261,12 @@ export default function App() {
       }
 
       // No signed-in Firebase user
+      activeUidRef.current = null;
       setFirebaseUser(null);
       detachCloudListeners();
 
       const savedMode = getSavedAuthMode();
-      if (savedMode === 'guest') {
+      if (!signingOutRef.current && savedMode === 'guest') {
         setAuthMode('guest');
         setWelcomeOpen(false);
         const guestData = await loadGuestStateFromServer();
@@ -257,6 +274,10 @@ export default function App() {
         setReparaciones(guestData.reparaciones);
         setHistorial(guestData.historial);
       } else {
+        stateRef.current = { productos: [], reparaciones: [], historial: [] };
+        setProductos([]);
+        setReparaciones([]);
+        setHistorial([]);
         setAuthMode('pending');
         setWelcomeOpen(true);
       }
@@ -502,13 +523,46 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    detachCloudListeners();
-    if (auth.currentUser) {
-      await signOut(auth);
+    signingOutRef.current = true;
+    setAuthLoading(true);
+
+    try {
+      detachCloudListeners();
+      setSavedAuthMode(null);
+      setRememberedGoogleUser(null);
+      setRememberedUser(null);
+
+      await clearLocalSessionData();
+
+      try {
+        await signOut(auth);
+      } catch {
+        // Ensure local sign-out state completes even if offline
+      }
+
+      activeUidRef.current = null;
+      guestPromptSignInRef.current = false;
+      stateRef.current = { productos: [], reparaciones: [], historial: [] };
+
+      setProductos([]);
+      setReparaciones([]);
+      setHistorial([]);
+      setFirebaseUser(null);
+      setPendingConflict(null);
+      setPendingBackup(null);
+      setReceipt(null);
+      setToasts([]);
+      setPreloadedCode(null);
+      setSection('panel');
+      setSyncingCloud(false);
+      setAuthError(null);
+      setMobileMenuOpen(false);
+      setAuthMode('pending');
+      setWelcomeOpen(true);
+    } finally {
+      signingOutRef.current = false;
+      setAuthLoading(false);
     }
-    setSavedAuthMode(null);
-    setAuthMode('pending');
-    setWelcomeOpen(true);
   };
 
   // Business action handlers
@@ -815,243 +869,256 @@ export default function App() {
       {/* Interactive 3D Parallax Watermark */}
       <ParallaxWatermark />
 
-      {/* Mobile Drawer Backdrop */}
-      {mobileMenuOpen && (
-        <div
-          onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
-        />
-      )}
-
-      {/* Sidebar (Collapsible Desktop + 100dvh Mobile Drawer) */}
-      <aside
-        className={`fixed top-0 left-0 z-50 h-[100dvh] bg-slate-900 text-white flex flex-col justify-between transition-all duration-200 border-r border-slate-800 ${
-          sidebarCollapsed ? 'lg:w-[76px]' : 'lg:w-64'
-        } w-64 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
-      >
-        <div className="flex flex-col min-h-0 flex-1">
-          {/* Sidebar Header */}
-          <div
-            className={`h-[72px] px-3.5 border-b border-slate-800 flex items-center shrink-0 ${
-              sidebarCollapsed ? 'lg:justify-center' : 'justify-between'
-            }`}
-          >
-            {!sidebarCollapsed && (
-              <div className="flex items-center gap-2.5 min-w-0">
-                <BrandLogo variant="mascot" className="w-9 h-9 object-contain shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-extrabold tracking-wide text-emerald-400 truncate uppercase">
-                    EL FACHA CELULARES
-                  </p>
-                  <p className="text-[11px] text-slate-400 truncate">
-                    Servicio Técnico y Accesorios
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((v) => !v)}
-              aria-label={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-              className="hidden lg:flex p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="w-5 h-5" />
-              ) : (
-                <PanelLeftClose className="w-5 h-5" />
-              )}
-            </button>
-
-            <button
-              type="button"
+      {authMode === 'pending' ? (
+        <div className="relative z-10 min-h-[100dvh] flex items-center justify-center p-6">
+          {!welcomeOpen && !pendingConflict && (
+            <div className="flex flex-col items-center gap-3 text-slate-500">
+              <div className="w-8 h-8 rounded-full border-2 border-slate-300 border-t-emerald-600 animate-spin" />
+              <p className="text-sm font-medium">Cargando...</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Mobile Drawer Backdrop */}
+          {mobileMenuOpen && (
+            <div
               onClick={() => setMobileMenuOpen(false)}
-              aria-label="Cerrar menú"
-              className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+              className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
+            />
+          )}
 
-          {/* Nav Links */}
-          <nav className="flex-1 overflow-y-auto px-2.5 py-4 space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const active = section === item.id;
-              const showCriticalCount = item.id === 'panel' && criticalStockCount > 0;
-              return (
+          {/* Sidebar (Collapsible Desktop + 100dvh Mobile Drawer) */}
+          <aside
+            className={`fixed top-0 left-0 z-50 h-[100dvh] bg-slate-900 text-white flex flex-col justify-between transition-all duration-200 border-r border-slate-800 ${
+              sidebarCollapsed ? 'lg:w-[76px]' : 'lg:w-64'
+            } w-64 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+          >
+            <div className="flex flex-col min-h-0 flex-1">
+              {/* Sidebar Header */}
+              <div
+                className={`h-[72px] px-3.5 border-b border-slate-800 flex items-center shrink-0 ${
+                  sidebarCollapsed ? 'lg:justify-center' : 'justify-between'
+                }`}
+              >
+                {!sidebarCollapsed && (
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <BrandLogo variant="mascot" className="w-9 h-9 object-contain shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-extrabold tracking-wide text-emerald-400 truncate uppercase">
+                        EL FACHA CELULARES
+                      </p>
+                      <p className="text-[11px] text-slate-400 truncate">
+                        Servicio Técnico y Accesorios
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <button
-                  key={item.id}
                   type="button"
-                  onClick={() => {
-                    setSection(item.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  title={
-                    sidebarCollapsed
-                      ? showCriticalCount
-                        ? `${item.label} (${criticalStockCount} en stock crítico)`
-                        : item.label
-                      : undefined
-                  }
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
-                    sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
-                  } ${
-                    active
-                      ? 'bg-slate-800 text-white font-semibold'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                  }`}
+                  onClick={() => setSidebarCollapsed((v) => !v)}
+                  aria-label={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
+                  className="hidden lg:flex p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                 >
-                  <Icon
-                    className={`w-5 h-5 shrink-0 ${
-                      active ? 'text-emerald-400' : 'text-slate-400'
-                    }`}
-                  />
-                  <span
-                    className={`truncate whitespace-nowrap ${
-                      sidebarCollapsed ? 'lg:hidden' : ''
-                    }`}
-                  >
-                    {item.label}
-                  </span>
-                  {showCriticalCount && !sidebarCollapsed && (
-                    <span
-                      aria-label={`${criticalStockCount} productos en stock crítico`}
-                      className="ml-auto text-xs font-mono font-bold text-red-400 tabular-nums shrink-0"
-                    >
-                      {criticalStockCount}
-                    </span>
+                  {sidebarCollapsed ? (
+                    <PanelLeftOpen className="w-5 h-5" />
+                  ) : (
+                    <PanelLeftClose className="w-5 h-5" />
                   )}
                 </button>
-              );
-            })}
-          </nav>
-        </div>
 
-        {/* Minimized User Profile at Sidebar Footer (ONLY photo + name, or photo only when collapsed) */}
-        <div className="p-3 border-t border-slate-800 bg-slate-950/60 shrink-0">
-          <UserProfileMenu
-            authMode={authMode}
-            firebaseUser={firebaseUser}
-            collapsed={sidebarCollapsed}
-            variant="sidebar"
-            syncingCloud={syncingCloud}
-            onSaveToCloud={() => void handleSaveToCloud()}
-            onDownloadJson={handleDownloadJson}
-            onRestoreJson={(file) => void handleRestoreJson(file)}
-            onSwitchAccount={() => void handleSwitchAccount()}
-            onSignOut={() => void handleSignOut()}
-          />
-        </div>
-      </aside>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-label="Cerrar menú"
+                  className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-      {/* Main Content Area */}
-      <div
-        className={`relative z-10 min-h-[100dvh] flex flex-col transition-all duration-200 ${
-          sidebarCollapsed ? 'lg:pl-[76px]' : 'lg:pl-64'
-        }`}
-      >
-        {/* Mobile Header with menu button + minimized user profile in top-right corner */}
-        <header className="lg:hidden sticky top-0 z-30 bg-slate-900 text-white px-3 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              aria-label="Abrir menú"
-              className="p-2 rounded-lg hover:bg-slate-800 text-slate-200 shrink-0 cursor-pointer"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2 min-w-0">
-              <BrandLogo variant="mascot" className="w-7 h-7 object-contain shrink-0" />
-              <span className="text-xs font-extrabold tracking-wide text-emerald-400 uppercase truncate">
-                EL FACHA CELULARES
-              </span>
+              {/* Nav Links */}
+              <nav className="flex-1 overflow-y-auto px-2.5 py-4 space-y-1">
+                {NAV_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const active = section === item.id;
+                  const showCriticalCount = item.id === 'panel' && criticalStockCount > 0;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setSection(item.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      title={
+                        sidebarCollapsed
+                          ? showCriticalCount
+                            ? `${item.label} (${criticalStockCount} en stock crítico)`
+                            : item.label
+                          : undefined
+                      }
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                        sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+                      } ${
+                        active
+                          ? 'bg-slate-800 text-white font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <Icon
+                        className={`w-5 h-5 shrink-0 ${
+                          active ? 'text-emerald-400' : 'text-slate-400'
+                        }`}
+                      />
+                      <span
+                        className={`truncate whitespace-nowrap ${
+                          sidebarCollapsed ? 'lg:hidden' : ''
+                        }`}
+                      >
+                        {item.label}
+                      </span>
+                      {showCriticalCount && !sidebarCollapsed && (
+                        <span
+                          aria-label={`${criticalStockCount} productos en stock crítico`}
+                          className="ml-auto text-xs font-mono font-bold text-red-400 tabular-nums shrink-0"
+                        >
+                          {criticalStockCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
+
+            {/* Minimized User Profile at Sidebar Footer (ONLY photo + name, or photo only when collapsed) */}
+            <div className="p-3 border-t border-slate-800 bg-slate-950/60 shrink-0">
+              <UserProfileMenu
+                authMode={authMode}
+                firebaseUser={firebaseUser}
+                collapsed={sidebarCollapsed}
+                variant="sidebar"
+                syncingCloud={syncingCloud}
+                onSaveToCloud={() => void handleSaveToCloud()}
+                onDownloadJson={handleDownloadJson}
+                onRestoreJson={(file) => void handleRestoreJson(file)}
+                onSwitchAccount={() => void handleSwitchAccount()}
+                onSignOut={() => void handleSignOut()}
+              />
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <div
+            className={`relative z-10 min-h-[100dvh] flex flex-col transition-all duration-200 ${
+              sidebarCollapsed ? 'lg:pl-[76px]' : 'lg:pl-64'
+            }`}
+          >
+            {/* Mobile Header with menu button + minimized user profile in top-right corner */}
+            <header className="lg:hidden sticky top-0 z-30 bg-slate-900 text-white px-3 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(true)}
+                  aria-label="Abrir menú"
+                  className="p-2 rounded-lg hover:bg-slate-800 text-slate-200 shrink-0 cursor-pointer"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <BrandLogo variant="mascot" className="w-7 h-7 object-contain shrink-0" />
+                  <span className="text-xs font-extrabold tracking-wide text-emerald-400 uppercase truncate">
+                    EL FACHA CELULARES
+                  </span>
+                </div>
+              </div>
+
+              <UserProfileMenu
+                authMode={authMode}
+                firebaseUser={firebaseUser}
+                variant="mobile-header"
+                syncingCloud={syncingCloud}
+                onSaveToCloud={() => void handleSaveToCloud()}
+                onDownloadJson={handleDownloadJson}
+                onRestoreJson={(file) => void handleRestoreJson(file)}
+                onSwitchAccount={() => void handleSwitchAccount()}
+                onSignOut={() => void handleSignOut()}
+              />
+            </header>
+
+            <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-8 min-w-0">
+              {section === 'panel' && (
+                <DashboardView
+                  productos={productos}
+                  reparaciones={reparaciones}
+                  historial={historial}
+                  onOpenScannerMode={handleOpenScannerMode}
+                />
+              )}
+
+              {section === 'escaner' && (
+                <ScannerView
+                  mode={scannerMode}
+                  preloadedCode={preloadedCode}
+                  productos={productos}
+                  onChangeMode={setScannerMode}
+                  onClearPreloadedCode={() => setPreloadedCode(null)}
+                  onSaveStockEntry={handleSaveStockEntry}
+                  onCompleteScannerSale={handleCompleteSale}
+                  onNotify={notify}
+                />
+              )}
+
+              {section === 'tecnico' && (
+                <ServiceTechView
+                  reparaciones={reparaciones}
+                  onSaveRepair={handleSaveRepair}
+                  onDeleteRepair={handleDeleteRepair}
+                  onPrintRepair={(repair) => setReceipt({ kind: 'repair', repair })}
+                />
+              )}
+
+              {section === 'inventario' && (
+                <InventoryView
+                  productos={productos}
+                  onSaveProduct={handleSaveProduct}
+                  onDeleteProduct={handleDeleteProduct}
+                  onReplenishProduct={(code) => handleOpenScannerMode('ENTRADA', code)}
+                  onNotify={notify}
+                />
+              )}
+
+              {section === 'pos' && (
+                <PosView
+                  productos={productos}
+                  reparaciones={reparaciones}
+                  onCheckout={handleCompleteSale}
+                  onNotify={notify}
+                />
+              )}
+
+              {section === 'balance' && (
+                <BalanceView
+                  productos={productos}
+                  reparaciones={reparaciones}
+                  historial={historial}
+                />
+              )}
+
+              {section === 'excel' && (
+                <SalesHistoryView
+                  historial={historial}
+                  onUpdateSale={handleUpdateSale}
+                  onDeleteSale={handleDeleteSale}
+                  onNotify={notify}
+                />
+              )}
+            </main>
           </div>
-
-          <UserProfileMenu
-            authMode={authMode}
-            firebaseUser={firebaseUser}
-            variant="mobile-header"
-            syncingCloud={syncingCloud}
-            onSaveToCloud={() => void handleSaveToCloud()}
-            onDownloadJson={handleDownloadJson}
-            onRestoreJson={(file) => void handleRestoreJson(file)}
-            onSwitchAccount={() => void handleSwitchAccount()}
-            onSignOut={() => void handleSignOut()}
-          />
-        </header>
-
-        <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-8 min-w-0">
-          {section === 'panel' && (
-            <DashboardView
-              productos={productos}
-              reparaciones={reparaciones}
-              historial={historial}
-              onOpenScannerMode={handleOpenScannerMode}
-            />
-          )}
-
-          {section === 'escaner' && (
-            <ScannerView
-              mode={scannerMode}
-              preloadedCode={preloadedCode}
-              productos={productos}
-              onChangeMode={setScannerMode}
-              onClearPreloadedCode={() => setPreloadedCode(null)}
-              onSaveStockEntry={handleSaveStockEntry}
-              onCompleteScannerSale={handleCompleteSale}
-              onNotify={notify}
-            />
-          )}
-
-          {section === 'tecnico' && (
-            <ServiceTechView
-              reparaciones={reparaciones}
-              onSaveRepair={handleSaveRepair}
-              onDeleteRepair={handleDeleteRepair}
-              onPrintRepair={(repair) => setReceipt({ kind: 'repair', repair })}
-            />
-          )}
-
-          {section === 'inventario' && (
-            <InventoryView
-              productos={productos}
-              onSaveProduct={handleSaveProduct}
-              onDeleteProduct={handleDeleteProduct}
-              onReplenishProduct={(code) => handleOpenScannerMode('ENTRADA', code)}
-              onNotify={notify}
-            />
-          )}
-
-          {section === 'pos' && (
-            <PosView
-              productos={productos}
-              reparaciones={reparaciones}
-              onCheckout={handleCompleteSale}
-              onNotify={notify}
-            />
-          )}
-
-          {section === 'balance' && (
-            <BalanceView
-              productos={productos}
-              reparaciones={reparaciones}
-              historial={historial}
-            />
-          )}
-
-          {section === 'excel' && (
-            <SalesHistoryView
-              historial={historial}
-              onUpdateSale={handleUpdateSale}
-              onDeleteSale={handleDeleteSale}
-              onNotify={notify}
-            />
-          )}
-        </main>
-      </div>
+        </>
+      )}
 
       {/* Modals & Toasts */}
       <WelcomeModal

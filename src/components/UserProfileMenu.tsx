@@ -42,11 +42,17 @@ export function UserProfileMenu({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isCloudConnected = authMode === 'google' && Boolean(firebaseUser);
+  const resolvedEmail =
+    firebaseUser?.email || firebaseUser?.providerData?.[0]?.email || '';
+  const resolvedName =
+    firebaseUser?.displayName || firebaseUser?.providerData?.[0]?.displayName || '';
+  const resolvedPhoto =
+    firebaseUser?.photoURL || firebaseUser?.providerData?.[0]?.photoURL || '';
   const displayName = isCloudConnected
-    ? firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'Usuario'
+    ? resolvedName || resolvedEmail.split('@')[0] || 'Usuario'
     : 'Invitado';
-  const email = isCloudConnected ? firebaseUser?.email || '' : '';
-  const photoURL = isCloudConnected && !imgError ? firebaseUser?.photoURL || '' : '';
+  const email = isCloudConnected ? resolvedEmail : '';
+  const photoURL = isCloudConnected && !imgError ? resolvedPhoto : '';
 
   useEffect(() => {
     setImgError(false);

@@ -114,6 +114,21 @@ async function startServer(): Promise<void> {
     }
   });
 
+  app.delete('/api/state', (_req: Request, res: Response) => {
+    const emptyState: GuestState = {
+      productos: [],
+      reparaciones: [],
+      historial: [],
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      writeGuestState(emptyState);
+      res.json({ ok: true, updatedAt: emptyState.updatedAt });
+    } catch {
+      res.status(500).json({ error: 'No se pudo limpiar el estado local en el servidor.' });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

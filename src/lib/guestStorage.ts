@@ -126,3 +126,28 @@ export function setSavedAuthMode(mode: 'google' | 'guest' | null): void {
     // Ignore
   }
 }
+
+export function clearLocalMirror(): void {
+  try {
+    localStorage.removeItem(LS_KEY_PRODUCTS);
+    localStorage.removeItem(LS_KEY_REPAIRS);
+    localStorage.removeItem(LS_KEY_SALES);
+    localStorage.removeItem('facha_stock_alert_dismissed_sig');
+  } catch {
+    // Ignore
+  }
+}
+
+export async function clearLocalSessionData(): Promise<void> {
+  clearLocalMirror();
+  setRememberedGoogleUser(null);
+  setSavedAuthMode(null);
+  try {
+    await fetch('/api/state', {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+  } catch {
+    // Static hosting (e.g., Vercel) has no Express /api/state route; localStorage already cleared
+  }
+}

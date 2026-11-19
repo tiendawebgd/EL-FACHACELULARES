@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, Camera, CameraOff, Check, QrCode, ShoppingBag } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowDownToLine, Camera, CameraOff, Check, QrCode, ScanBarcode, ShoppingBag } from 'lucide-react';
 import type { PaymentMethod, Product, SaleLineItem, ScannerMode } from '../types';
 import { playScanBeep } from '../utils/format';
 import { BarcodeCamera } from './BarcodeCamera';
@@ -9,6 +9,7 @@ interface ScannerViewProps {
   mode: ScannerMode;
   preloadedCode: string | null;
   productos: Product[];
+  gunDetected?: boolean;
   onChangeMode: (mode: ScannerMode) => void;
   onClearPreloadedCode: () => void;
   onSaveStockEntry: (product: Product, addedQty: number) => void;
@@ -19,17 +20,20 @@ interface ScannerViewProps {
     pagaCon: number;
   }) => void;
   onNotify: (type: 'success' | 'error' | 'warning' | 'info', title: string, message?: string) => void;
+  onRegisterScanHandler?: (fn: ((code: string) => void) | null) => void;
 }
 
 export function ScannerView({
   mode,
   preloadedCode,
   productos,
+  gunDetected = false,
   onChangeMode,
   onClearPreloadedCode,
   onSaveStockEntry,
   onCompleteScannerSale,
   onNotify,
+  onRegisterScanHandler,
 }: ScannerViewProps) {
   const [gunInput, setGunInput] = useState('');
   const [cameraActive, setCameraActive] = useState(false);
@@ -49,48 +53,57 @@ export function ScannerView({
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const processScannedCode = (rawCode: string) => {
-    const code = rawCode.trim();
-    if (!code) return;
+  const processScannedCode = useCallback(
+    (rawCode: string) => {
+      const code = rawCode.trim();
+      if (!code) return;
 
-    const existing = productos.find((p) => String(p.codigo) === code);
+      const existing = productos.find((p) => String(p.codigo) === code);
 
-    if (mode === 'VENTA') {
-      if (!existing) {
-        playScanBeep('error');
-        onNotify('error', 'Producto no encontrado', `No existe ningún producto con código ${code}.`);
+      if (mode === 'VENTA') {
+        if (!existing) {
+          playScanBeep('error');
+          onNotify('error', 'Producto no encontrado', `No existe ningún producto con código ${code}.`);
+          return;
+        }
+        if (existing.stock < 1) {
+          playScanBeep('error');
+          onNotify('error', 'Sin stock disponible', `${existing.nombre} tiene 0 unidades.`);
+          return;
+        }
+        playScanBeep('success');
+        setCameraActive(false);
+        setSaleModalProduct(existing);
         return;
       }
-      if (existing.stock < 1) {
-        playScanBeep('error');
-        onNotify('error', 'Sin stock disponible', `${existing.nombre} tiene 0 unidades.`);
-        return;
-      }
+
+      // ENTRADA mode
       playScanBeep('success');
-      setCameraActive(false);
-      setSaleModalProduct(existing);
-      return;
-    }
+      setActiveCode(code);
+      if (existing) {
+        setNombre(existing.nombre);
+        setCategoria(existing.categoria);
+        setCosto(String(existing.costo));
+        setPrecio(String(existing.precio));
+        setCantidad('1');
+        setTimeout(() => qtyInputRef.current?.focus(), 40);
+      } else {
+        setNombre('');
+        setCategoria('Accesorios');
+        setCosto('0');
+        setPrecio('0');
+        setCantidad('1');
+        setTimeout(() => nameInputRef.current?.focus(), 40);
+      }
+    },
+    [productos, mode, onNotify]
+  );
 
-    // ENTRADA mode
-    playScanBeep('success');
-    setActiveCode(code);
-    if (existing) {
-      setNombre(existing.nombre);
-      setCategoria(existing.categoria);
-      setCosto(String(existing.costo));
-      setPrecio(String(existing.precio));
-      setCantidad('1');
-      setTimeout(() => qtyInputRef.current?.focus(), 40);
-    } else {
-      setNombre('');
-      setCategoria('Accesorios');
-      setCosto('0');
-      setPrecio('0');
-      setCantidad('1');
-      setTimeout(() => nameInputRef.current?.focus(), 40);
-    }
-  };
+  useEffect(() => {
+    if (!onRegisterScanHandler || saleModalProduct) return;
+    onRegisterScanHandler(processScannedCode);
+    return () => onRegisterScanHandler(null);
+  }, [onRegisterScanHandler, saleModalProduct, processScannedCode]);
 
   useEffect(() => {
     if (!preloadedCode) return;
@@ -188,6 +201,18 @@ export function ScannerView({
           >
             {isVenta ? 'MÓDULO DE EGRESO / VENTA' : 'MÓDULO DE INGRESO RÁPIDO'}
           </span>
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+              gunDetected ? 'text-emerald-400' : 'text-slate-400'
+            }`}
+          >
+            <ScanBarcode className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {gunDetected
+                ? 'Pistola lectora detectada'
+                : 'Pistola USB / Bluetooth lista'}
+            </span>
+          </span>
         </div>
 
         <h2 className="text-lg sm:text-xl font-bold text-white mb-4">
@@ -220,6 +245,7 @@ export function ScannerView({
                 <input
                   ref={gunInputRef}
                   id="scanner-gun-input"
+                  data-barcode-input="true"
                   type="text"
                   value={gunInput}
                   onChange={(e) => setGunInput(e.target.value)}
@@ -407,6 +433,7 @@ export function ScannerView({
           onCompleteScannerSale(payload);
         }}
         onNotify={(t, title, msg) => onNotify(t, title, msg)}
+        onRegisterScanHandler={onRegisterScanHandler}
       />
     </div>
   );

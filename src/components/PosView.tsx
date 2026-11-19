@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Camera,
   CameraOff,
@@ -6,6 +6,7 @@ import {
   Minus,
   Plus,
   QrCode,
+  ScanBarcode,
   Search,
   ShoppingCart,
   Trash2,
@@ -17,6 +18,7 @@ import { BarcodeCamera } from './BarcodeCamera';
 interface PosViewProps {
   productos: Product[];
   reparaciones: RepairOrder[];
+  gunDetected?: boolean;
   onCheckout: (payload: {
     items: SaleLineItem[];
     descuento: number;
@@ -24,9 +26,17 @@ interface PosViewProps {
     pagaCon: number;
   }) => void;
   onNotify: (type: 'success' | 'error' | 'warning' | 'info', title: string, message?: string) => void;
+  onRegisterScanHandler?: (fn: ((code: string) => void) | null) => void;
 }
 
-export function PosView({ productos, reparaciones, onCheckout, onNotify }: PosViewProps) {
+export function PosView({
+  productos,
+  reparaciones,
+  gunDetected = false,
+  onCheckout,
+  onNotify,
+  onRegisterScanHandler,
+}: PosViewProps) {
   const [tab, setTab] = useState<'productos' | 'reparaciones'>('productos');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,8 +46,6 @@ export function PosView({ productos, reparaciones, onCheckout, onNotify }: PosVi
   const [descuento, setDescuento] = useState('0');
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>('Efectivo');
   const [pagaCon, setPagaCon] = useState('0');
-
-  const gunBufferRef = useRef<{ chars: string; lastTime: number }>({ chars: '', lastTime: 0 });
 
   const addProductToCart = useCallback(
     (prod: Product) => {
@@ -119,44 +127,12 @@ export function PosView({ productos, reparaciones, onCheckout, onNotify }: PosVi
     [productos, reparaciones, addProductToCart, onNotify]
   );
 
-  // Background USB barcode gun listener when user is not typing inside form fields
+  // Register POS barcode lookup with the app-wide automatic barcode gun detector
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      if (
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        target?.isContentEditable
-      ) {
-        return;
-      }
-
-      const now = Date.now();
-      if (now - gunBufferRef.current.lastTime > 90) {
-        gunBufferRef.current.chars = '';
-      }
-      gunBufferRef.current.lastTime = now;
-
-      if (e.key === 'Enter') {
-        const scanned = gunBufferRef.current.chars.trim();
-        gunBufferRef.current.chars = '';
-        if (scanned.length >= 3) {
-          e.preventDefault();
-          handleBarcodeLookup(scanned);
-        }
-        return;
-      }
-
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        gunBufferRef.current.chars += e.key;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleBarcodeLookup]);
+    if (!onRegisterScanHandler) return;
+    onRegisterScanHandler(handleBarcodeLookup);
+    return () => onRegisterScanHandler(null);
+  }, [onRegisterScanHandler, handleBarcodeLookup]);
 
   const filteredProducts = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -283,6 +259,7 @@ export function PosView({ productos, reparaciones, onCheckout, onNotify }: PosVi
                 <QrCode className="w-4 h-4 text-teal-600 shrink-0 mr-2" />
                 <input
                   type="text"
+                  data-barcode-input="true"
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -341,6 +318,19 @@ export function PosView({ productos, reparaciones, onCheckout, onNotify }: PosVi
                 placeholder="Buscar por nombre, código o N° de orden..."
                 className="min-w-0 flex-1 bg-transparent py-2 text-sm text-slate-900 focus:outline-none"
               />
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs">
+              <ScanBarcode
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  gunDetected ? 'text-emerald-600' : 'text-slate-400'
+                }`}
+              />
+              <span className={gunDetected ? 'font-semibold text-emerald-700' : 'text-slate-500'}>
+                {gunDetected
+                  ? 'Pistola lectora detectada · Escaneá directamente para sumar al carrito'
+                  : 'Pistola USB/Bluetooth lista (escaneá sin hacer clic en ningún campo)'}
+              </span>
             </div>
           </div>
 

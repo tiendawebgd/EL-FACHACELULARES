@@ -8,6 +8,8 @@ interface BackupImportModalProps {
   hasExistingData: boolean;
   isCloudConnected: boolean;
   importing: boolean;
+  modalTitle?: string;
+  sourceHeading?: string;
   onReplace: () => void;
   onMerge: () => void;
   onClose: () => void;
@@ -20,6 +22,8 @@ export function BackupImportModal({
   hasExistingData,
   isCloudConnected,
   importing,
+  modalTitle = 'Subir copia de seguridad',
+  sourceHeading = 'Archivo seleccionado',
   onReplace,
   onMerge,
   onClose,
@@ -40,7 +44,7 @@ export function BackupImportModal({
         <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <Upload className="w-4 h-4 text-emerald-400 shrink-0" />
-            <h2 className="font-bold text-base truncate">Subir copia de seguridad</h2>
+            <h2 className="font-bold text-base truncate">{modalTitle}</h2>
           </div>
           <button
             type="button"
@@ -55,7 +59,7 @@ export function BackupImportModal({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 space-y-1">
-            <p className="text-xs font-semibold text-slate-500">Archivo seleccionado</p>
+            <p className="text-xs font-semibold text-slate-500">{sourceHeading}</p>
             <p className="text-sm font-bold text-slate-900 break-all">{fileName}</p>
             {(formattedDate || backupSource) && (
               <p className="text-xs text-slate-600">

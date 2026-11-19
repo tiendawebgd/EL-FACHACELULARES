@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
+  CloudDownload,
   CloudUpload,
   Download,
   Loader2,
@@ -17,7 +18,10 @@ interface UserProfileMenuProps {
   collapsed?: boolean;
   variant: 'sidebar' | 'mobile-header';
   syncingCloud: boolean;
+  restoringCloud?: boolean;
+  lastCloudBackupAt?: string | null;
   onSaveToCloud: () => void;
+  onRestoreFromCloud: () => void;
   onDownloadJson: () => void;
   onRestoreJson: (file: File) => void;
   onSwitchAccount: () => void;
@@ -30,7 +34,10 @@ export function UserProfileMenu({
   collapsed = false,
   variant,
   syncingCloud,
+  restoringCloud = false,
+  lastCloudBackupAt = null,
   onSaveToCloud,
+  onRestoreFromCloud,
   onDownloadJson,
   onRestoreJson,
   onSwitchAccount,
@@ -175,7 +182,7 @@ export function UserProfileMenu({
           <div className="flex flex-col gap-2 py-3">
             <button
               type="button"
-              disabled={syncingCloud}
+              disabled={syncingCloud || restoringCloud}
               onClick={() => {
                 onSaveToCloud();
                 if (!isCloudConnected) setOpen(false);
@@ -189,6 +196,40 @@ export function UserProfileMenu({
               )}
               <span>Guardar en la nube</span>
             </button>
+
+            <button
+              type="button"
+              disabled={syncingCloud || restoringCloud}
+              onClick={() => {
+                onRestoreFromCloud();
+                setOpen(false);
+              }}
+              className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer"
+            >
+              {restoringCloud ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+              ) : (
+                <CloudDownload className="w-4 h-4 text-emerald-600" />
+              )}
+              <span>Restablecer copia en la nube</span>
+            </button>
+
+            {isCloudConnected && lastCloudBackupAt && (
+              <p className="text-[11px] text-slate-500 text-center tabular-nums">
+                Última copia:{' '}
+                {(() => {
+                  const d = new Date(lastCloudBackupAt);
+                  return Number.isNaN(d.getTime())
+                    ? lastCloudBackupAt
+                    : d.toLocaleString('es-AR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+                })()}
+              </p>
+            )}
 
             <button
               type="button"

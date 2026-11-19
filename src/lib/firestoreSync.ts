@@ -13,6 +13,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import type { AppStateData, Product, RepairOrder, RepairStatus, SaleLineItem, SaleRecord } from '../types';
+import { parseAndNormalizeBackupJson, type ParsedBackupResult } from '../utils/backupImport';
 import { toSafeFirestoreId } from '../utils/format';
 import { db, handleFirestoreError, OperationType } from './firebase';
 
@@ -518,3 +519,153 @@ export async function syncStateToFirestore(
     handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
   }
 }
+
+export interface CloudBackupMeta {
+  savedAt: string;
+  productosCount: number;
+  reparacionesCount: number;
+  historialCount: number;
+}
+
+export async function saveCloudBackupSnapshot(
+  user: User,
+  state: AppStateData,
+  cache?: CloudSnapshotCache
+): Promise<CloudBackupMeta> {
+  const uid = user.uid;
+  const savedAt = new Date().toISOString();
+  const payloadJson = JSON.stringify({
+    productos: state.productos,
+    reparaciones: state.reparaciones,
+    historial: state.historial,
+  });
+
+  if (payloadJson.length > 800000) {
+    throw new Error(
+      'La copia supera el límite de tamaño en la nube (800 KB). Usá "Descargar JSON".'
+    );
+  }
+
+  const backupRef = doc(db, 'users', uid, 'backups', 'latest');
+  const userRef = doc(db, 'users', uid);
+
+  try {
+    const [backupSnap, userSnap] = await Promise.all([
+      getDoc(backupRef),
+      cache?.userRootExists ? Promise.resolve(null) : getDoc(userRef),
+    ]);
+
+    const batch = writeBatch(db);
+    if (!cache?.userRootExists && userSnap && !userSnap.exists()) {
+      const resolvedEmail = user.email ?? user.providerData?.[0]?.email ?? '';
+      const resolvedName = user.displayName ?? user.providerData?.[0]?.displayName ?? '';
+      const resolvedPhoto = user.photoURL ?? user.providerData?.[0]?.photoURL ?? '';
+      batch.set(userRef, {
+        uid,
+        email: clampString(resolvedEmail, 254),
+        displayName: clampString(resolvedName, 120),
+        photoURL: clampString(resolvedPhoto, 1024),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    const baseDoc = {
+      savedAt: savedAt.slice(0, 40),
+      productosCount: state.productos.length,
+      reparacionesCount: state.reparaciones.length,
+      historialCount: state.historial.length,
+      payloadJson,
+    };
+
+    if (backupSnap.exists()) {
+      batch.update(backupRef, {
+        ...baseDoc,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      batch.set(backupRef, {
+        uid,
+        ...baseDoc,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    if (cache) cache.userRootExists = true;
+
+    return {
+      savedAt,
+      productosCount: state.productos.length,
+      reparacionesCount: state.reparaciones.length,
+      historialCount: state.historial.length,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `users/${uid}/backups/latest`);
+  }
+}
+
+export async function getLatestCloudBackupMeta(uid: string): Promise<CloudBackupMeta | null> {
+  try {
+    const backupSnap = await getDoc(doc(db, 'users', uid, 'backups', 'latest'));
+    if (!backupSnap.exists()) return null;
+    const data = backupSnap.data();
+    return {
+      savedAt: String(data.savedAt ?? ''),
+      productosCount: Number(data.productosCount ?? 0),
+      reparacionesCount: Number(data.reparacionesCount ?? 0),
+      historialCount: Number(data.historialCount ?? 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchLatestCloudBackup(uid: string): Promise<{
+  savedAt: string;
+  sourceLabel: string;
+  parsed: ParsedBackupResult;
+} | null> {
+  try {
+    const backupSnap = await getDoc(doc(db, 'users', uid, 'backups', 'latest'));
+    if (backupSnap.exists()) {
+      const data = backupSnap.data();
+      const rawJson = typeof data.payloadJson === 'string' ? data.payloadJson : '';
+      if (rawJson) {
+        const parsed = parseAndNormalizeBackupJson(rawJson);
+        const savedAt = String(data.savedAt ?? '');
+        return {
+          savedAt,
+          sourceLabel: 'Última copia guardada en la nube',
+          parsed: {
+            ...parsed,
+            backupDate: savedAt || parsed.backupDate,
+            backupSource: 'Nube (Copia guardada)',
+          },
+        };
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `users/${uid}/backups/latest`);
+  }
+
+  // Fallback: if no explicit checkpoint exists yet, read live synced collections in Firestore
+  const live = await fetchCloudStateSnapshot(uid);
+  const hasLive =
+    live.state.productos.length > 0 ||
+    live.state.reparaciones.length > 0 ||
+    live.state.historial.length > 0;
+  if (!hasLive) return null;
+
+  return {
+    savedAt: '',
+    sourceLabel: 'Datos actuales en la nube',
+    parsed: {
+      state: live.state,
+      backupDate: undefined,
+      backupSource: 'Nube (Sincronización en vivo)',
+    },
+  };
+}
+

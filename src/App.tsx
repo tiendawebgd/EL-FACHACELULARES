@@ -28,10 +28,14 @@ import { ServiceTechView } from './components/ServiceTechView';
 import { ToastContainer } from './components/ToastContainer';
 import { UserProfileMenu } from './components/UserProfileMenu';
 import { WelcomeModal } from './components/WelcomeModal';
+import { useBarcodeGun } from './hooks/useBarcodeGun';
 import { auth, googleProvider, testFirestoreConnection } from './lib/firebase';
 import {
   createEmptyCloudCache,
   fetchCloudStateSnapshot,
+  fetchLatestCloudBackup,
+  getLatestCloudBackupMeta,
+  saveCloudBackupSnapshot,
   subscribeUserCollections,
   syncStateToFirestore,
   type CloudSnapshotCache,
@@ -78,6 +82,8 @@ interface PendingConflict {
 interface PendingBackupImport {
   fileName: string;
   parsed: ParsedBackupResult;
+  modalTitle?: string;
+  sourceHeading?: string;
 }
 
 const NAV_ITEMS: { id: AppSection; label: string; icon: typeof LayoutGrid }[] = [
@@ -120,10 +126,14 @@ export default function App() {
   const [historial, setHistorial] = useState<SaleRecord[]>([]);
 
   const [syncingCloud, setSyncingCloud] = useState(false);
+  const [restoringCloud, setRestoringCloud] = useState(false);
+  const [lastCloudBackupAt, setLastCloudBackupAt] = useState<string | null>(null);
   const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const [pendingBackup, setPendingBackup] = useState<PendingBackupImport | null>(null);
   const [importingBackup, setImportingBackup] = useState(false);
+
+  const [gunDetected, setGunDetected] = useState(false);
 
   const [receipt, setReceipt] = useState<ReceiptPayload | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -135,6 +145,8 @@ export default function App() {
   const guestPromptSignInRef = useRef(false);
   const activeUidRef = useRef<string | null>(null);
   const signingOutRef = useRef(false);
+  const activeScanHandlerRef = useRef<((code: string) => void) | null>(null);
+  const gunToastShownRef = useRef(false);
   const stateRef = useRef<AppStateData>({ productos: [], reparaciones: [], historial: [] });
   stateRef.current = { productos, reparaciones, historial };
 
@@ -155,6 +167,43 @@ export default function App() {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const registerScanHandler = useCallback((fn: ((code: string) => void) | null) => {
+    activeScanHandlerRef.current = fn;
+  }, []);
+
+  useBarcodeGun({
+    enabled:
+      authMode !== 'pending' &&
+      !welcomeOpen &&
+      !pendingConflict &&
+      !pendingBackup &&
+      !receipt,
+    onGunDetected: () => {
+      setGunDetected(true);
+      if (!gunToastShownRef.current) {
+        gunToastShownRef.current = true;
+        notify(
+          'success',
+          'Pistola lectora detectada',
+          'Podés escanear códigos de barras directamente desde cualquier pantalla.'
+        );
+      }
+    },
+    onScan: (code) => {
+      if (activeScanHandlerRef.current) {
+        activeScanHandlerRef.current(code);
+        return;
+      }
+      const exists = stateRef.current.productos.some((p) => String(p.codigo) === code);
+      if (!exists) {
+        setScannerMode('ENTRADA');
+      }
+      setPreloadedCode(code);
+      setSection('escaner');
+      setMobileMenuOpen(false);
+    },
+  });
 
   const detachCloudListeners = useCallback(() => {
     if (unsubFirestoreRef.current) {
@@ -248,6 +297,9 @@ export default function App() {
           setSavedAuthMode('google');
           setWelcomeOpen(false);
           setAuthError(null);
+          void getLatestCloudBackupMeta(user.uid).then((meta) => {
+            setLastCloudBackupAt(meta?.savedAt || null);
+          });
         } catch (err) {
           setAuthError(err instanceof Error ? err.message : 'No se pudo cargar la nube.');
           if (authModeRef.current === 'pending') {
@@ -263,6 +315,7 @@ export default function App() {
       // No signed-in Firebase user
       activeUidRef.current = null;
       setFirebaseUser(null);
+      setLastCloudBackupAt(null);
       detachCloudListeners();
 
       const savedMode = getSavedAuthMode();
@@ -390,6 +443,8 @@ export default function App() {
     try {
       const { user, localState, cloudCache } = pendingConflict;
       await syncStateToFirestore(user, localState, cloudCache, true);
+      const meta = await saveCloudBackupSnapshot(user, localState, cloudCache);
+      setLastCloudBackupAt(meta.savedAt);
       setProductos(localState.productos);
       setReparaciones(localState.reparaciones);
       setHistorial(localState.historial);
@@ -415,7 +470,17 @@ export default function App() {
       setSyncingCloud(true);
       try {
         await syncStateToFirestore(firebaseUser, stateRef.current, cloudCacheRef.current, true);
-        notify('success', 'Sincronizado con la nube', 'Todos tus datos están respaldados.');
+        const meta = await saveCloudBackupSnapshot(
+          firebaseUser,
+          stateRef.current,
+          cloudCacheRef.current
+        );
+        setLastCloudBackupAt(meta.savedAt);
+        notify(
+          'success',
+          'Copia guardada en la nube',
+          'Todos tus datos quedaron respaldados y listos para restablecer.'
+        );
       } catch (err) {
         notify(
           'error',
@@ -430,6 +495,44 @@ export default function App() {
     // Guest user clicked "Guardar en la nube" -> sign in with Google
     guestPromptSignInRef.current = true;
     await handleGoogleLogin(true);
+  };
+
+  const handleRestoreFromCloud = async () => {
+    if (authMode !== 'google' || !firebaseUser) {
+      guestPromptSignInRef.current = true;
+      await handleGoogleLogin(true);
+      return;
+    }
+
+    setRestoringCloud(true);
+    try {
+      const res = await fetchLatestCloudBackup(firebaseUser.uid);
+      if (!res) {
+        notify(
+          'info',
+          'Sin copia en la nube',
+          'Todavía no guardaste ninguna copia de seguridad en tu cuenta.'
+        );
+        return;
+      }
+      if (res.savedAt) {
+        setLastCloudBackupAt(res.savedAt);
+      }
+      setPendingBackup({
+        fileName: res.sourceLabel,
+        parsed: res.parsed,
+        modalTitle: 'Restablecer copia de la nube',
+        sourceHeading: 'Origen de la copia',
+      });
+    } catch (err) {
+      notify(
+        'error',
+        'No se pudo leer la copia en la nube',
+        err instanceof Error ? err.message : 'Revisá tu conexión e intentá nuevamente.'
+      );
+    } finally {
+      setRestoringCloud(false);
+    }
   };
 
   const handleDownloadJson = () => {
@@ -555,6 +658,8 @@ export default function App() {
       setPreloadedCode(null);
       setSection('panel');
       setSyncingCloud(false);
+      setRestoringCloud(false);
+      setLastCloudBackupAt(null);
       setAuthError(null);
       setMobileMenuOpen(false);
       setAuthMode('pending');
@@ -1001,7 +1106,10 @@ export default function App() {
                 collapsed={sidebarCollapsed}
                 variant="sidebar"
                 syncingCloud={syncingCloud}
+                restoringCloud={restoringCloud}
+                lastCloudBackupAt={lastCloudBackupAt}
                 onSaveToCloud={() => void handleSaveToCloud()}
+                onRestoreFromCloud={() => void handleRestoreFromCloud()}
                 onDownloadJson={handleDownloadJson}
                 onRestoreJson={(file) => void handleRestoreJson(file)}
                 onSwitchAccount={() => void handleSwitchAccount()}
@@ -1040,7 +1148,10 @@ export default function App() {
                 firebaseUser={firebaseUser}
                 variant="mobile-header"
                 syncingCloud={syncingCloud}
+                restoringCloud={restoringCloud}
+                lastCloudBackupAt={lastCloudBackupAt}
                 onSaveToCloud={() => void handleSaveToCloud()}
+                onRestoreFromCloud={() => void handleRestoreFromCloud()}
                 onDownloadJson={handleDownloadJson}
                 onRestoreJson={(file) => void handleRestoreJson(file)}
                 onSwitchAccount={() => void handleSwitchAccount()}
@@ -1063,11 +1174,13 @@ export default function App() {
                   mode={scannerMode}
                   preloadedCode={preloadedCode}
                   productos={productos}
+                  gunDetected={gunDetected}
                   onChangeMode={setScannerMode}
                   onClearPreloadedCode={() => setPreloadedCode(null)}
                   onSaveStockEntry={handleSaveStockEntry}
                   onCompleteScannerSale={handleCompleteSale}
                   onNotify={notify}
+                  onRegisterScanHandler={registerScanHandler}
                 />
               )}
 
@@ -1094,8 +1207,10 @@ export default function App() {
                 <PosView
                   productos={productos}
                   reparaciones={reparaciones}
+                  gunDetected={gunDetected}
                   onCheckout={handleCompleteSale}
                   onNotify={notify}
+                  onRegisterScanHandler={registerScanHandler}
                 />
               )}
 
@@ -1147,6 +1262,8 @@ export default function App() {
         hasExistingData={hasAnyData(stateRef.current)}
         isCloudConnected={authMode === 'google' && Boolean(firebaseUser)}
         importing={importingBackup}
+        modalTitle={pendingBackup?.modalTitle}
+        sourceHeading={pendingBackup?.sourceHeading}
         onReplace={() => void applyRestoredBackup('replace')}
         onMerge={() => void applyRestoredBackup('merge')}
         onClose={() => {

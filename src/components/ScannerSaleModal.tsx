@@ -16,6 +16,7 @@ interface ScannerSaleModalProps {
     pagaCon: number;
   }) => void;
   onNotify: (type: 'success' | 'error' | 'warning', title: string, message?: string) => void;
+  onRegisterScanHandler?: (fn: ((code: string) => void) | null) => void;
 }
 
 export function ScannerSaleModal({
@@ -25,6 +26,7 @@ export function ScannerSaleModal({
   onClose,
   onConfirmSale,
   onNotify,
+  onRegisterScanHandler,
 }: ScannerSaleModalProps) {
   const [items, setItems] = useState<SaleLineItem[]>([]);
   const [descuento, setDescuento] = useState<string>('0');
@@ -99,6 +101,12 @@ export function ScannerSaleModal({
     [productos, onNotify]
   );
 
+  useEffect(() => {
+    if (!open || !onRegisterScanHandler) return;
+    onRegisterScanHandler(addProductByCode);
+    return () => onRegisterScanHandler(null);
+  }, [open, addProductByCode, onRegisterScanHandler]);
+
   if (!open) return null;
 
   const subtotal = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
@@ -171,6 +179,7 @@ export function ScannerSaleModal({
             <div className="flex flex-wrap sm:flex-nowrap gap-2">
               <input
                 id="scanner-modal-add-code"
+                data-barcode-input="true"
                 type="text"
                 value={extraCode}
                 onChange={(e) => setExtraCode(e.target.value)}

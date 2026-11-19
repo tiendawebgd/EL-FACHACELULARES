@@ -25,29 +25,54 @@ const SUPPORTED_FORMATS = [
   Html5QrcodeSupportedFormats.QR_CODE,
 ];
 
+function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const uaMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+  const coarsePointer =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches &&
+    window.innerWidth < 1024;
+  return uaMobile || coarsePointer;
+}
+
 function isFrontCameraLabel(label: string): boolean {
-  return /\b(front|user|selfie|facetime|frontal)\b/i.test(label);
+  return /\b(front|user|selfie|facetime|frontal|delantera)\b/i.test(label);
 }
 
 function isExcludedSecondaryLens(label: string): boolean {
-  return /(ultra[-\s]?wide|wide[-\s]?angle|0\.[56]x?|telephoto|\btele\b|\bmacro\b|\bdepth\b|\btof\b|\bir\b|bokeh|monochrome|dual|triple)/i.test(
+  return /(ultra[-\s]?wide|ultrawide|ultra\s*gran\s*angular|gran\s*angular|super\s*angular|wide[-\s]?angle|0[.,][456]x?|telephoto|teleobjetivo|\btele\b|\bmacro\b|\bdepth\b|profundidad|\btof\b|\bir\b|bokeh|monochrome|monocrom|\bdual\b|\btriple\b|virtual)/i.test(
     label
   );
 }
 
 function scoreRearCamera(label: string, index: number): number {
   const lower = label.toLowerCase();
-  if (isFrontCameraLabel(lower)) return -1000;
+  if (isFrontCameraLabel(lower)) return -2000;
+
   let score = 0;
-  if (/(back|rear|environment|trasera|posterior)/i.test(lower)) score += 100;
-  if (/(\b1x\b|main|principal|standard|camera2\s*0|camera\s*0)/i.test(lower)) score += 60;
-  if (isExcludedSecondaryLens(lower)) score -= 120;
+  if (/(back|rear|environment|trasera|posterior)/i.test(lower)) score += 120;
+  if (/(\b1x\b|main|principal|standard|est[aá]ndar|camera2\s*0|camera\s*0|cam\s*0)/i.test(lower)) {
+    score += 150;
+  }
+  if (/^(back camera|c[aá]mara trasera)$/i.test(lower.trim())) {
+    score += 140;
+  }
+  // Penalize non-0 camera2 modules on Android when explicit camera2 1/2/3/4 appears
+  if (/camera2?\s*[1-9]\b/i.test(lower)) score -= 80;
+  if (isExcludedSecondaryLens(lower)) score -= 500;
+
   // Earlier enumerated rear camera is typically the primary 1X module
-  score -= index;
+  score -= index * 5;
   return score;
 }
 
-async function discoverRearCameras(): Promise<MediaDeviceInfo[]> {
+async function discoverRearCameras(): Promise<{
+  cameras: MediaDeviceInfo[];
+  mobileLocked: boolean;
+}> {
   let devices = await navigator.mediaDevices.enumerateDevices();
   let videoInputs = devices.filter((d) => d.kind === 'videoinput');
 
@@ -67,14 +92,25 @@ async function discoverRearCameras(): Promise<MediaDeviceInfo[]> {
   }
 
   const rearNonFront = videoInputs.filter((d) => !isFrontCameraLabel(d.label));
-  const pool = rearNonFront.length > 0 ? rearNonFront : videoInputs;
+  const rearPool = rearNonFront.length > 0 ? rearNonFront : videoInputs;
 
-  // Put primary 1X lenses first, excluding ultra-wide / tele / macro from index 0
-  return [...pool].sort((a, b) => {
-    const idxA = pool.indexOf(a);
-    const idxB = pool.indexOf(b);
+  // Strictly remove ultra-wide / gran angular / macro / tele / virtual lenses when a clean 1X lens exists
+  const primaryCleanPool = rearPool.filter((d) => !isExcludedSecondaryLens(d.label));
+  const candidatePool = primaryCleanPool.length > 0 ? primaryCleanPool : rearPool;
+
+  const sorted = [...candidatePool].sort((a, b) => {
+    const idxA = candidatePool.indexOf(a);
+    const idxB = candidatePool.indexOf(b);
     return scoreRearCamera(b.label, idxB) - scoreRearCamera(a.label, idxA);
   });
+
+  const mobile = isMobileDevice();
+  if (mobile && sorted.length > 0) {
+    // On mobile phones, lock strictly to the single best primary rear camera (no ultra-wide switching)
+    return { cameras: [sorted[0]], mobileLocked: true };
+  }
+
+  return { cameras: sorted, mobileLocked: false };
 }
 
 export function BarcodeCamera({
@@ -97,6 +133,7 @@ export function BarcodeCamera({
   const mountedRef = useRef(true);
 
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [mobileLocked, setMobileLocked] = useState(false);
   const [cameraIdx, setCameraIdx] = useState(0);
   const [zoomSupported, setZoomSupported] = useState(false);
   const [zoomVal, setZoomVal] = useState(1.0);
@@ -151,7 +188,7 @@ export function BarcodeCamera({
     if (caps.zoom && typeof caps.zoom.max === 'number') {
       const clampedMin = Math.max(1.0, caps.zoom.min ?? 1.0);
       const clampedMax = Math.max(clampedMin, caps.zoom.max);
-      const initialZoom = Math.min(clampedMax, 1.0);
+      const initialZoom = Math.max(clampedMin, Math.min(clampedMax, 1.0));
       setZoomSupported(clampedMax > 1.05);
       setMaxZoom(Number(clampedMax.toFixed(1)));
       setZoomVal(Number(initialZoom.toFixed(1)));
@@ -202,11 +239,13 @@ export function BarcodeCamera({
       }
 
       try {
-        const discovered = await discoverRearCameras();
+        const { cameras: discovered, mobileLocked: locked } = await discoverRearCameras();
         if (cancelled || !mountedRef.current) return;
         setCameras(discovered);
+        setMobileLocked(locked);
 
-        const chosen = discovered[cameraIdx % Math.max(1, discovered.length)];
+        const safeIdx = locked ? 0 : cameraIdx % Math.max(1, discovered.length);
+        const chosen = discovered[safeIdx];
         await stopScanner();
         if (cancelled || !mountedRef.current) return;
 
@@ -349,12 +388,12 @@ export function BarcodeCamera({
         ) : (
           <span className="text-xs text-slate-400 flex items-center gap-1.5">
             <Camera className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Lente 1.0x (4:3)</span>
+            <span>{mobileLocked ? 'Cámara principal 1X' : 'Lente 1.0x (4:3)'}</span>
           </span>
         )}
 
         <div className="flex items-center gap-2 ml-auto">
-          {cameras.length > 1 && (
+          {!mobileLocked && cameras.length > 1 && (
             <button
               type="button"
               onClick={() => setCameraIdx((prev) => (prev + 1) % cameras.length)}

@@ -15,8 +15,6 @@ import type { AuthMode } from '../types';
 interface UserProfileMenuProps {
   authMode: AuthMode;
   firebaseUser: FirebaseUser | null;
-  collapsed?: boolean;
-  variant: 'sidebar' | 'mobile-header';
   syncingCloud: boolean;
   restoringCloud?: boolean;
   lastCloudBackupAt?: string | null;
@@ -31,8 +29,6 @@ interface UserProfileMenuProps {
 export function UserProfileMenu({
   authMode,
   firebaseUser,
-  collapsed = false,
-  variant,
   syncingCloud,
   restoringCloud = false,
   lastCloudBackupAt = null,
@@ -83,22 +79,8 @@ export function UserProfileMenu({
     };
   }, [open]);
 
-  const avatar = photoURL ? (
-    <img
-      src={photoURL}
-      alt={displayName}
-      referrerPolicy="no-referrer"
-      onError={() => setImgError(true)}
-      className="w-9 h-9 rounded-full object-cover border border-slate-600 shrink-0"
-    />
-  ) : (
-    <div className="w-9 h-9 rounded-full bg-slate-700 text-slate-200 flex items-center justify-center border border-slate-600 shrink-0">
-      <UserIcon className="w-4 h-4" />
-    </div>
-  );
-
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="fixed bottom-4 left-4 z-[60]">
       <input
         ref={fileInputRef}
         type="file"
@@ -114,45 +96,29 @@ export function UserProfileMenu({
         }}
       />
 
-      {variant === 'sidebar' ? (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          title={displayName}
-          className={`w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-800/80 transition-colors text-left cursor-pointer ${
-            collapsed ? 'justify-center' : ''
-          }`}
-        >
-          {avatar}
-          {!collapsed && (
-            <span className="min-w-0 flex-1 text-sm font-semibold text-white truncate">
-              {displayName}
-            </span>
-          )}
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="flex items-center gap-2 p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer min-w-0 max-w-[165px]"
-        >
-          {avatar}
-          <span className="text-xs font-semibold text-white truncate">{displayName}</span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={`Configuración de usuario (${displayName})`}
+        title={displayName}
+        className="w-12 h-12 rounded-full overflow-hidden bg-slate-900 text-slate-200 flex items-center justify-center shadow-xl ring-2 ring-white/90 border border-slate-700 hover:scale-105 active:scale-95 transition-transform cursor-pointer focus:outline-none focus-visible:ring-emerald-400"
+      >
+        {photoURL ? (
+          <img
+            src={photoURL}
+            alt={displayName}
+            referrerPolicy="no-referrer"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <UserIcon className="w-5 h-5" />
+        )}
+      </button>
 
       {open && (
-        <div
-          className={`z-[75] w-72 max-w-[calc(100vw-1.5rem)] max-h-[85dvh] overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 text-slate-900 ${
-            variant === 'sidebar'
-              ? collapsed
-                ? 'fixed left-20 bottom-4'
-                : 'absolute left-0 bottom-full mb-2'
-              : 'absolute right-0 top-full mt-2'
-          }`}
-        >
+        <div className="absolute left-0 bottom-full mb-3 z-[75] w-72 max-w-[calc(100vw-2rem)] max-h-[80dvh] overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 text-slate-900">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             {photoURL ? (
               <img

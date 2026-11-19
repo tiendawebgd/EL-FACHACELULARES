@@ -1044,7 +1044,7 @@ export default function App() {
               </div>
 
               {/* Nav Links */}
-              <nav className="flex-1 overflow-y-auto px-2.5 py-4 space-y-1">
+              <nav className="flex-1 overflow-y-auto px-2.5 py-4 pb-20 space-y-1">
                 {NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
                   const active = section === item.id;
@@ -1097,25 +1097,6 @@ export default function App() {
                 })}
               </nav>
             </div>
-
-            {/* Minimized User Profile at Sidebar Footer (ONLY photo + name, or photo only when collapsed) */}
-            <div className="p-3 border-t border-slate-800 bg-slate-950/60 shrink-0">
-              <UserProfileMenu
-                authMode={authMode}
-                firebaseUser={firebaseUser}
-                collapsed={sidebarCollapsed}
-                variant="sidebar"
-                syncingCloud={syncingCloud}
-                restoringCloud={restoringCloud}
-                lastCloudBackupAt={lastCloudBackupAt}
-                onSaveToCloud={() => void handleSaveToCloud()}
-                onRestoreFromCloud={() => void handleRestoreFromCloud()}
-                onDownloadJson={handleDownloadJson}
-                onRestoreJson={(file) => void handleRestoreJson(file)}
-                onSwitchAccount={() => void handleSwitchAccount()}
-                onSignOut={() => void handleSignOut()}
-              />
-            </div>
           </aside>
 
           {/* Main Content Area */}
@@ -1124,7 +1105,7 @@ export default function App() {
               sidebarCollapsed ? 'lg:pl-[76px]' : 'lg:pl-64'
             }`}
           >
-            {/* Mobile Header with menu button + minimized user profile in top-right corner */}
+            {/* Mobile Header */}
             <header className="lg:hidden sticky top-0 z-30 bg-slate-900 text-white px-3 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <button
@@ -1142,24 +1123,9 @@ export default function App() {
                   </span>
                 </div>
               </div>
-
-              <UserProfileMenu
-                authMode={authMode}
-                firebaseUser={firebaseUser}
-                variant="mobile-header"
-                syncingCloud={syncingCloud}
-                restoringCloud={restoringCloud}
-                lastCloudBackupAt={lastCloudBackupAt}
-                onSaveToCloud={() => void handleSaveToCloud()}
-                onRestoreFromCloud={() => void handleRestoreFromCloud()}
-                onDownloadJson={handleDownloadJson}
-                onRestoreJson={(file) => void handleRestoreJson(file)}
-                onSwitchAccount={() => void handleSwitchAccount()}
-                onSignOut={() => void handleSignOut()}
-              />
             </header>
 
-            <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-8 min-w-0">
+            <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 pb-20 sm:p-6 sm:pb-20 lg:p-8 min-w-0">
               {section === 'panel' && (
                 <DashboardView
                   productos={productos}
@@ -1232,6 +1198,20 @@ export default function App() {
               )}
             </main>
           </div>
+
+          <UserProfileMenu
+            authMode={authMode}
+            firebaseUser={firebaseUser}
+            syncingCloud={syncingCloud}
+            restoringCloud={restoringCloud}
+            lastCloudBackupAt={lastCloudBackupAt}
+            onSaveToCloud={() => void handleSaveToCloud()}
+            onRestoreFromCloud={() => void handleRestoreFromCloud()}
+            onDownloadJson={handleDownloadJson}
+            onRestoreJson={(file) => void handleRestoreJson(file)}
+            onSwitchAccount={() => void handleSwitchAccount()}
+            onSignOut={() => void handleSignOut()}
+          />
         </>
       )}
 

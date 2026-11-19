@@ -9,6 +9,22 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'hmr-resilience-guard',
+        apply: 'serve',
+        transformIndexHtml: {
+          order: 'pre',
+          handler() {
+            return [
+              {
+                tag: 'script',
+                injectTo: 'head-prepend',
+                children: `(function(){var m=function(v){var s=typeof v==='string'?v:(v&&v.message?String(v.message):String(v||''));return s.indexOf('WebSocket closed without opened')!==-1||s.indexOf('failed to connect to websocket')!==-1;};window.addEventListener('unhandledrejection',function(e){if(m(e.reason)){e.preventDefault();e.stopImmediatePropagation();}},true);window.addEventListener('error',function(e){if(m(e.error||e.message)){e.preventDefault();e.stopImmediatePropagation();}},true);var oe=console.error;console.error=function(){for(var i=0;i<arguments.length;i++){if(m(arguments[i])){console.warn('[vite] HMR WebSocket unavailable in managed environment; continuing without live reload.');return;}}return oe.apply(console,arguments);};})();`,
+              },
+            ];
+          },
+        },
+      },
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.

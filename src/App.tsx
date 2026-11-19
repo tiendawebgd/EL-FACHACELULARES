@@ -1113,7 +1113,7 @@ export default function App() {
               </div>
 
               {/* Nav Links */}
-              <nav className="flex-1 overflow-y-auto px-2.5 py-4 pb-20 space-y-1">
+              <nav className="flex-1 overflow-y-auto px-2.5 py-4 space-y-1">
                 {NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
                   const active = section === item.id;
@@ -1194,7 +1194,7 @@ export default function App() {
               </div>
             </header>
 
-            <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 pb-20 sm:p-6 sm:pb-20 lg:p-8 min-w-0">
+            <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 pb-20 sm:p-6 sm:pb-20 lg:p-8 lg:pb-20 min-w-0">
               {section === 'panel' && (
                 <DashboardView
                   productos={productos}

@@ -12,7 +12,7 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
   return (
     <div
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[90] flex flex-col gap-2 w-[calc(100vw-2rem)] max-w-sm max-h-[92dvh] overflow-y-auto pointer-events-none"
+      className="fixed bottom-20 right-4 z-[90] flex flex-col gap-2 w-[calc(100vw-2rem)] max-w-sm max-h-[85dvh] overflow-y-auto pointer-events-none"
     >
       {toasts.map((toast) => {
         const icon =

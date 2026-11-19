@@ -80,7 +80,7 @@ export function UserProfileMenu({
   }, [open]);
 
   return (
-    <div ref={containerRef} className="fixed bottom-4 left-4 z-[60]">
+    <div ref={containerRef} className="fixed bottom-4 right-4 z-[60]">
       <input
         ref={fileInputRef}
         type="file"
@@ -118,7 +118,7 @@ export function UserProfileMenu({
       </button>
 
       {open && (
-        <div className="absolute left-0 bottom-full mb-3 z-[75] w-72 max-w-[calc(100vw-2rem)] max-h-[80dvh] overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 text-slate-900">
+        <div className="absolute right-0 bottom-full mb-3 z-[75] w-72 max-w-[calc(100vw-2rem)] max-h-[80dvh] overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 text-slate-900">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             {photoURL ? (
               <img

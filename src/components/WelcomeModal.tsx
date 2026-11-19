@@ -100,6 +100,16 @@ export function WelcomeModal({
             <span>Entrar como Invitado</span>
           </button>
         </div>
+
+        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-center gap-3 text-xs text-slate-500">
+          <a href="/privacidad.html" className="hover:text-slate-800 underline underline-offset-2">
+            Política de Privacidad
+          </a>
+          <span aria-hidden="true">·</span>
+          <a href="/terminos.html" className="hover:text-slate-800 underline underline-offset-2">
+            Términos de Uso
+          </a>
+        </div>
       </div>
     </div>
   );

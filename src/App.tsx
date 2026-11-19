@@ -19,6 +19,7 @@ import { BrandLogo } from './components/BrandLogo';
 import { ConflictModal } from './components/ConflictModal';
 import { DashboardView } from './components/DashboardView';
 import { InventoryView } from './components/InventoryView';
+import { LegalPage } from './components/LegalPage';
 import { ParallaxWatermark } from './components/ParallaxWatermark';
 import { PosView } from './components/PosView';
 import { ReceiptModal, type ReceiptPayload } from './components/ReceiptModal';
@@ -110,7 +111,18 @@ function hasAnyData(state: AppStateData): boolean {
   );
 }
 
+function getInitialLegalRoute(): 'privacidad' | 'terminos' | null {
+  if (typeof window === 'undefined') return null;
+  const p = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  if (p === '/privacidad' || p === '/privacy') return 'privacidad';
+  if (p === '/terminos' || p === '/terms') return 'terminos';
+  return null;
+}
+
 export default function App() {
+  const [legalRoute, setLegalRoute] = useState<'privacidad' | 'terminos' | null>(() =>
+    getInitialLegalRoute()
+  );
   const [section, setSection] = useState<AppSection>('panel');
   const [scannerMode, setScannerMode] = useState<ScannerMode>('ENTRADA');
   const [preloadedCode, setPreloadedCode] = useState<string | null>(null);
@@ -1013,6 +1025,18 @@ export default function App() {
       restoreStock ? 'Se devolvió el stock al inventario.' : undefined
     );
   };
+
+  if (legalRoute) {
+    return (
+      <LegalPage
+        kind={legalRoute}
+        onBack={() => {
+          window.history.replaceState({}, '', '/');
+          setLegalRoute(null);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-50 text-slate-900 overflow-x-hidden relative">

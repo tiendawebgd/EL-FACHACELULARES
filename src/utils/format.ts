@@ -65,6 +65,31 @@ export function toSafeFirestoreId(prefix: string, raw: string): string {
   return full.slice(0, 120);
 }
 
+/**
+ * Computes the next sequential code (e.g., REC-1006, ORD-1004) from existing
+ * records by finding the highest numeric suffix, preventing duplicates if
+ * earlier records were deleted.
+ */
+export function getNextSequentialCode(
+  existingCodes: string[],
+  prefix: string,
+  startBase = 1000
+): string {
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escaped}-(\\d+)$`, 'i');
+  let maxNum = startBase;
+  for (const code of existingCodes) {
+    const match = pattern.exec(String(code || '').trim());
+    if (match) {
+      const n = Number(match[1]);
+      if (Number.isFinite(n) && n > maxNum) {
+        maxNum = n;
+      }
+    }
+  }
+  return `${prefix}-${maxNum + 1}`;
+}
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {

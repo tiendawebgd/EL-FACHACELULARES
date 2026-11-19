@@ -10,7 +10,12 @@ import {
   X,
 } from 'lucide-react';
 import type { PaymentMethod, RepairOrder, RepairStatus } from '../types';
-import { formatARS, formatARSCompact, getTodayISO } from '../utils/format';
+import {
+  formatARS,
+  formatARSCompact,
+  getNextSequentialCode,
+  getTodayISO,
+} from '../utils/format';
 
 interface ServiceTechViewProps {
   reparaciones: RepairOrder[];
@@ -116,7 +121,11 @@ export function ServiceTechView({
         }
       : {
           id: Date.now(),
-          n_orden: `ORD-${1000 + reparaciones.length + 1}`,
+          n_orden: getNextSequentialCode(
+            reparaciones.map((r) => r.n_orden),
+            'ORD',
+            1000
+          ),
           cliente: cliente.trim(),
           telefono: telefono.trim(),
           equipo: equipo.trim(),

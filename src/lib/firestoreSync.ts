@@ -262,11 +262,13 @@ export function subscribeUserCollections(
     onRepairs: (items: RepairOrder[]) => void;
     onSales: (items: SaleRecord[]) => void;
     onError: (err: Error) => void;
+    shouldIgnoreSnapshot?: () => boolean;
   }
 ): Unsubscribe {
   const unsubProducts = onSnapshot(
     query(collection(db, 'users', uid, 'products'), where('uid', '==', uid)),
     (snap) => {
+      if (callbacks.shouldIgnoreSnapshot?.()) return;
       const nextMap = new Map<string, Record<string, unknown>>();
       const list = snap.docs.map((d) => {
         const p = fromDocProduct(d.data());
@@ -288,6 +290,7 @@ export function subscribeUserCollections(
   const unsubRepairs = onSnapshot(
     query(collection(db, 'users', uid, 'repairs'), where('uid', '==', uid)),
     (snap) => {
+      if (callbacks.shouldIgnoreSnapshot?.()) return;
       const nextMap = new Map<string, Record<string, unknown>>();
       const list = snap.docs.map((d) => {
         const r = fromDocRepair(d.data());
@@ -309,6 +312,7 @@ export function subscribeUserCollections(
   const unsubSales = onSnapshot(
     query(collection(db, 'users', uid, 'sales'), where('uid', '==', uid)),
     (snap) => {
+      if (callbacks.shouldIgnoreSnapshot?.()) return;
       const nextMap = new Map<string, Record<string, unknown>>();
       const list = snap.docs.map((d) => {
         const s = fromDocSale(d.id, d.data());
@@ -518,6 +522,94 @@ export async function syncStateToFirestore(
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
   }
+}
+
+export interface CloudSyncRequest {
+  user: User;
+  state: AppStateData;
+  cache: CloudSnapshotCache;
+  forceUserRootCheck?: boolean;
+  onSyncStateChange?: (syncing: boolean) => void;
+}
+
+export interface CloudSyncQueue {
+  enqueue: (req: CloudSyncRequest) => Promise<void>;
+  isBusy: () => boolean;
+  cancelPending: () => void;
+}
+
+/**
+ * Serializes and coalesces Firestore state writes so rapid consecutive
+ * mutations (e.g. fast barcode gun scans) never race against stale diff caches.
+ */
+export function createCloudSyncQueue(): CloudSyncQueue {
+  let epoch = 0;
+  let running = false;
+  let pending: CloudSyncRequest | null = null;
+  let waiters: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+
+  const drain = async (startEpoch: number) => {
+    running = true;
+    try {
+      while (pending && epoch === startEpoch) {
+        const task = pending;
+        const batchWaiters = waiters;
+        pending = null;
+        waiters = [];
+
+        task.onSyncStateChange?.(true);
+        try {
+          await syncStateToFirestore(
+            task.user,
+            task.state,
+            task.cache,
+            Boolean(task.forceUserRootCheck)
+          );
+          for (const w of batchWaiters) w.resolve();
+        } catch (err) {
+          const errorObj = err instanceof Error ? err : new Error(String(err));
+          for (const w of batchWaiters) w.reject(errorObj);
+        } finally {
+          if (!pending || epoch !== startEpoch) {
+            task.onSyncStateChange?.(false);
+          }
+        }
+      }
+    } finally {
+      if (epoch === startEpoch) {
+        running = false;
+      }
+    }
+  };
+
+  return {
+    enqueue(req) {
+      return new Promise<void>((resolve, reject) => {
+        const prevForce = pending?.forceUserRootCheck ?? false;
+        pending = {
+          ...req,
+          forceUserRootCheck: prevForce || Boolean(req.forceUserRootCheck),
+        };
+        waiters.push({ resolve, reject });
+        if (!running) {
+          void drain(epoch);
+        }
+      });
+    },
+    isBusy() {
+      return running || pending !== null;
+    },
+    cancelPending() {
+      epoch += 1;
+      running = false;
+      const dropped = waiters;
+      pending = null;
+      waiters = [];
+      for (const w of dropped) {
+        w.resolve();
+      }
+    },
+  };
 }
 
 export interface CloudBackupMeta {

@@ -31,6 +31,7 @@ import { WelcomeModal } from './components/WelcomeModal';
 import { useBarcodeGun } from './hooks/useBarcodeGun';
 import { auth, googleProvider, testFirestoreConnection } from './lib/firebase';
 import {
+  createCloudSyncQueue,
   createEmptyCloudCache,
   fetchCloudStateSnapshot,
   fetchLatestCloudBackup,
@@ -39,6 +40,7 @@ import {
   subscribeUserCollections,
   syncStateToFirestore,
   type CloudSnapshotCache,
+  type CloudSyncQueue,
 } from './lib/firestoreSync';
 import {
   clearLocalMirror,
@@ -70,7 +72,11 @@ import {
   parseAndNormalizeBackupJson,
   type ParsedBackupResult,
 } from './utils/backupImport';
-import { getNowTimestampStr, toSafeFirestoreId } from './utils/format';
+import {
+  getNextSequentialCode,
+  getNowTimestampStr,
+  toSafeFirestoreId,
+} from './utils/format';
 
 interface PendingConflict {
   user: User;
@@ -141,6 +147,7 @@ export default function App() {
   const criticalStockCount = productos.filter((p) => p.stock < 3).length;
 
   const cloudCacheRef = useRef<CloudSnapshotCache>(createEmptyCloudCache());
+  const cloudSyncQueueRef = useRef<CloudSyncQueue>(createCloudSyncQueue());
   const unsubFirestoreRef = useRef<(() => void) | null>(null);
   const guestPromptSignInRef = useRef(false);
   const activeUidRef = useRef<string | null>(null);
@@ -206,6 +213,7 @@ export default function App() {
   });
 
   const detachCloudListeners = useCallback(() => {
+    cloudSyncQueueRef.current.cancelPending();
     if (unsubFirestoreRef.current) {
       unsubFirestoreRef.current();
       unsubFirestoreRef.current = null;
@@ -224,6 +232,7 @@ export default function App() {
         onError: (err) => {
           notify('error', 'Sincronización en la nube', err.message);
         },
+        shouldIgnoreSnapshot: () => cloudSyncQueueRef.current.isBusy(),
       });
     },
     [detachCloudListeners, notify]
@@ -345,22 +354,27 @@ export default function App() {
   // Persist helper for every business mutation
   const commitState = useCallback(
     (nextState: AppStateData) => {
+      stateRef.current = nextState;
       setProductos(nextState.productos);
       setReparaciones(nextState.reparaciones);
       setHistorial(nextState.historial);
       writeLocalMirror(nextState);
 
       if (authModeRef.current === 'google' && auth.currentUser) {
-        setSyncingCloud(true);
-        void syncStateToFirestore(auth.currentUser, nextState, cloudCacheRef.current)
+        void cloudSyncQueueRef.current
+          .enqueue({
+            user: auth.currentUser,
+            state: nextState,
+            cache: cloudCacheRef.current,
+            onSyncStateChange: setSyncingCloud,
+          })
           .catch((err) => {
             notify(
               'error',
               'Error al guardar en la nube',
               err instanceof Error ? err.message : 'Revisá tu conexión.'
             );
-          })
-          .finally(() => setSyncingCloud(false));
+          });
       } else {
         void saveGuestStateToServer(nextState);
       }
@@ -469,7 +483,12 @@ export default function App() {
     if (authMode === 'google' && firebaseUser) {
       setSyncingCloud(true);
       try {
-        await syncStateToFirestore(firebaseUser, stateRef.current, cloudCacheRef.current, true);
+        await cloudSyncQueueRef.current.enqueue({
+          user: firebaseUser,
+          state: stateRef.current,
+          cache: cloudCacheRef.current,
+          forceUserRootCheck: true,
+        });
         const meta = await saveCloudBackupSnapshot(
           firebaseUser,
           stateRef.current,
@@ -578,6 +597,7 @@ export default function App() {
       const nextState =
         mode === 'merge' ? mergeBackupState(stateRef.current, incoming) : incoming;
 
+      stateRef.current = nextState;
       setProductos(nextState.productos);
       setReparaciones(nextState.reparaciones);
       setHistorial(nextState.historial);
@@ -586,7 +606,12 @@ export default function App() {
       if (authModeRef.current === 'google' && auth.currentUser) {
         setSyncingCloud(true);
         try {
-          await syncStateToFirestore(auth.currentUser, nextState, cloudCacheRef.current, true);
+          await cloudSyncQueueRef.current.enqueue({
+            user: auth.currentUser,
+            state: nextState,
+            cache: cloudCacheRef.current,
+            forceUserRootCheck: true,
+          });
           notify(
             'success',
             'Copia restaurada y sincronizada',
@@ -679,13 +704,16 @@ export default function App() {
   };
 
   const handleSaveStockEntry = (incomingProduct: Product, addedQty: number) => {
-    const existingIdx = productos.findIndex((p) => p.codigo === incomingProduct.codigo);
+    const current = stateRef.current;
+    const existingIdx = current.productos.findIndex(
+      (p) => p.codigo === incomingProduct.codigo
+    );
     let nextProducts: Product[];
     let finalStock: number;
     if (existingIdx >= 0) {
-      const current = productos[existingIdx];
-      finalStock = current.stock + addedQty;
-      nextProducts = productos.map((p, i) =>
+      const existing = current.productos[existingIdx];
+      finalStock = existing.stock + addedQty;
+      nextProducts = current.productos.map((p, i) =>
         i === existingIdx
           ? {
               ...incomingProduct,
@@ -695,11 +723,11 @@ export default function App() {
       );
     } else {
       finalStock = addedQty;
-      nextProducts = [...productos, { ...incomingProduct, stock: finalStock }];
+      nextProducts = [...current.productos, { ...incomingProduct, stock: finalStock }];
     }
 
     commitState({
-      ...stateRef.current,
+      ...current,
       productos: nextProducts,
     });
     notify(
@@ -715,14 +743,19 @@ export default function App() {
     metodoPago: PaymentMethod;
     pagaCon: number;
   }) => {
+    const current = stateRef.current;
     const { items, descuento, metodoPago, pagaCon } = payload;
     const subtotal = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
     const total = Math.max(0, subtotal - descuento);
-    const nRecibo = `REC-${1000 + historial.length + 1}`;
+    const nRecibo = getNextSequentialCode(
+      current.historial.map((h) => h.n_recibo),
+      'REC',
+      1000
+    );
     const fecha = getNowTimestampStr();
 
     // Update stock & repair statuses
-    const nextProducts = productos.map((p) => {
+    const nextProducts = current.productos.map((p) => {
       const soldQty = items
         .filter((it) => !it.es_reparacion && it.codigo === p.codigo)
         .reduce((s, it) => s + it.cantidad, 0);
@@ -733,7 +766,7 @@ export default function App() {
     const paidRepairIds = new Set(
       items.filter((it) => it.es_reparacion && it.id).map((it) => it.id as number)
     );
-    const nextRepairs = reparaciones.map((r) =>
+    const nextRepairs = current.reparaciones.map((r) =>
       paidRepairIds.has(r.id)
         ? { ...r, estado: 'Retirado' as const, senia: r.presupuesto }
         : r
@@ -755,7 +788,7 @@ export default function App() {
     commitState({
       productos: nextProducts,
       reparaciones: nextRepairs,
-      historial: [...historial, newSale],
+      historial: [...current.historial, newSale],
     });
 
     setReceipt({
@@ -772,7 +805,7 @@ export default function App() {
     notify('success', `Venta ${nRecibo} registrada`, `Total cobrado: $${total.toLocaleString('es-AR')}`);
 
     const droppedToCritical = nextProducts.filter((nextProd) => {
-      const prevProd = productos.find((p) => p.codigo === nextProd.codigo);
+      const prevProd = current.productos.find((p) => p.codigo === nextProd.codigo);
       return prevProd && nextProd.stock < prevProd.stock && nextProd.stock < 3;
     });
 
@@ -793,18 +826,19 @@ export default function App() {
   };
 
   const handleSaveProduct = (product: Product, previousCode?: string) => {
-    const prevProduct = productos.find(
+    const current = stateRef.current;
+    const prevProduct = current.productos.find(
       (p) => p.codigo === (previousCode || product.codigo)
     );
     let nextProducts: Product[];
     if (previousCode) {
-      nextProducts = productos.map((p) => (p.codigo === previousCode ? product : p));
-    } else if (productos.some((p) => p.codigo === product.codigo)) {
-      nextProducts = productos.map((p) => (p.codigo === product.codigo ? product : p));
+      nextProducts = current.productos.map((p) => (p.codigo === previousCode ? product : p));
+    } else if (current.productos.some((p) => p.codigo === product.codigo)) {
+      nextProducts = current.productos.map((p) => (p.codigo === product.codigo ? product : p));
     } else {
-      nextProducts = [...productos, product];
+      nextProducts = [...current.productos, product];
     }
-    commitState({ ...stateRef.current, productos: nextProducts });
+    commitState({ ...current, productos: nextProducts });
     notify('success', 'Producto guardado', product.nombre);
 
     if (product.stock < 3 && (!prevProduct || product.stock < prevProduct.stock)) {
@@ -817,8 +851,9 @@ export default function App() {
   };
 
   const handleDeleteProduct = (codigo: string) => {
-    const nextProducts = productos.filter((p) => p.codigo !== codigo);
-    commitState({ ...stateRef.current, productos: nextProducts });
+    const current = stateRef.current;
+    const nextProducts = current.productos.filter((p) => p.codigo !== codigo);
+    commitState({ ...current, productos: nextProducts });
     notify('info', 'Producto eliminado');
   };
 
@@ -827,26 +862,33 @@ export default function App() {
     isNew: boolean,
     paymentMethod: PaymentMethod = 'Efectivo'
   ) => {
-    const prevOrder = isNew ? null : reparaciones.find((r) => r.id === order.id) ?? null;
+    const current = stateRef.current;
+    const prevOrder = isNew
+      ? null
+      : current.reparaciones.find((r) => r.id === order.id) ?? null;
     const nextRepairs = isNew
-      ? [...reparaciones, order]
-      : reparaciones.map((r) => (r.id === order.id ? order : r));
+      ? [...current.reparaciones, order]
+      : current.reparaciones.map((r) => (r.id === order.id ? order : r));
 
     const becameRetired =
       order.estado === 'Retirado' && (isNew || prevOrder?.estado !== 'Retirado');
-    const alreadyInHistory = historial.some((s) =>
+    const alreadyInHistory = current.historial.some((s) =>
       s.items?.some(
         (it) => it.es_reparacion && (it.id === order.id || it.n_orden === order.n_orden)
       )
     );
 
-    let nextHistorial = historial;
+    let nextHistorial = current.historial;
     let createdReceipt: ReceiptPayload | null = null;
 
     if (becameRetired && !alreadyInHistory) {
       const prevSenia = prevOrder ? Math.max(0, Number(prevOrder.senia) || 0) : 0;
       const amountPaidOnPickup = Math.max(0, order.presupuesto - prevSenia);
-      const nRecibo = `REC-${1000 + historial.length + 1}`;
+      const nRecibo = getNextSequentialCode(
+        current.historial.map((h) => h.n_recibo),
+        'REC',
+        1000
+      );
       const fecha = getNowTimestampStr();
       const itemLabel = `Retiro Reparación ${order.n_orden} (${order.equipo})`;
       const detailText =
@@ -877,7 +919,7 @@ export default function App() {
         paga_con: amountPaidOnPickup,
         items: saleItems,
       };
-      nextHistorial = [...historial, newSale];
+      nextHistorial = [...current.historial, newSale];
 
       if (!isNew) {
         createdReceipt = {
@@ -895,7 +937,7 @@ export default function App() {
     }
 
     commitState({
-      ...stateRef.current,
+      ...current,
       reparaciones: nextRepairs,
       historial: nextHistorial,
     });
@@ -914,25 +956,28 @@ export default function App() {
   };
 
   const handleDeleteRepair = (id: number) => {
-    const nextRepairs = reparaciones.filter((r) => r.id !== id);
-    commitState({ ...stateRef.current, reparaciones: nextRepairs });
+    const current = stateRef.current;
+    const nextRepairs = current.reparaciones.filter((r) => r.id !== id);
+    commitState({ ...current, reparaciones: nextRepairs });
     notify('info', 'Orden eliminada');
   };
 
   const handleUpdateSale = (index: number, updated: SaleRecord) => {
-    const nextSales = historial.map((s, i) => (i === index ? updated : s));
-    commitState({ ...stateRef.current, historial: nextSales });
+    const current = stateRef.current;
+    const nextSales = current.historial.map((s, i) => (i === index ? updated : s));
+    commitState({ ...current, historial: nextSales });
     notify('success', `Venta ${updated.n_recibo} actualizada`);
   };
 
   const handleDeleteSale = (index: number, restoreStock: boolean) => {
-    const target = historial[index];
+    const current = stateRef.current;
+    const target = current.historial[index];
     if (!target) return;
 
-    let nextProducts = productos;
+    let nextProducts = current.productos;
     if (restoreStock) {
       if (Array.isArray(target.items) && target.items.length > 0) {
-        nextProducts = productos.map((p) => {
+        nextProducts = current.productos.map((p) => {
           const qtyToRestore = target.items!
             .filter((it) => !it.es_reparacion && it.codigo === p.codigo)
             .reduce((s, it) => s + it.cantidad, 0);
@@ -949,16 +994,16 @@ export default function App() {
             restoreByName.set(nameKey, (restoreByName.get(nameKey) || 0) + Number(m[1]));
           }
         }
-        nextProducts = productos.map((p) => {
+        nextProducts = current.productos.map((p) => {
           const qty = restoreByName.get(p.nombre.trim().toLowerCase()) || 0;
           return qty > 0 ? { ...p, stock: p.stock + qty } : p;
         });
       }
     }
 
-    const nextSales = historial.filter((_, i) => i !== index);
+    const nextSales = current.historial.filter((_, i) => i !== index);
     commitState({
-      ...stateRef.current,
+      ...current,
       productos: nextProducts,
       historial: nextSales,
     });
